@@ -157,8 +157,8 @@ int setup_encoding_engine(int video_width, int video_height, int fps)
   rc_attr->attrH264Vbr.outFrmRate.frmRateNum = fps;
   rc_attr->attrH264Vbr.outFrmRate.frmRateDen = 1;
   rc_attr->attrH264Vbr.maxGop = 10;
-  rc_attr->attrH264Vbr.maxQp = 38; // 38 before
-  rc_attr->attrH264Vbr.minQp = 15; // 15 before
+  rc_attr->attrH264Vbr.maxQp = 38;
+  rc_attr->attrH264Vbr.minQp = 15;
   rc_attr->attrH264Vbr.staticTime = 1;
   rc_attr->attrH264Vbr.maxBitRate = 4500;
   rc_attr->attrH264Vbr.changePos = 50;
