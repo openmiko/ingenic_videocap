@@ -17,6 +17,7 @@ endforeach()
 
 
 # Tell CMake where to look for header files and libraries
+include_directories(${CMAKE_SOURCE_DIR}/src/include)
 include_directories(${CMAKE_SOURCE_DIR}/src/include/imp)
 include_directories(${CMAKE_SOURCE_DIR}/src/include/sysutils)
 include_directories(${CMAKE_FIND_ROOT_PATH}/usr/include/h264bitstream)

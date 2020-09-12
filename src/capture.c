@@ -160,7 +160,7 @@ int setup_encoding_engine(int video_width, int video_height, int fps)
   rc_attr->attrH264Vbr.maxQp = 38;
   rc_attr->attrH264Vbr.minQp = 15;
   rc_attr->attrH264Vbr.staticTime = 1;
-  rc_attr->attrH264Vbr.maxBitRate = 4500;
+  rc_attr->attrH264Vbr.maxBitRate = 500;
   rc_attr->attrH264Vbr.changePos = 50;
   rc_attr->attrH264Vbr.FrmQPStep = 3;
   rc_attr->attrH264Vbr.GOPQPStep = 15;
@@ -202,6 +202,13 @@ int output_v4l2_frames(char *v4l2_device_path, int video_width, int video_height
   int i;
   int total;
 
+  int frames_written = 0;
+  float current_fps = 0;
+  float elapsed_seconds = 0;
+  struct timeval tval_before, tval_after, tval_result;
+
+
+
   IMPCell framesource_chn = { DEV_ID_FS, 0, 0};
   IMPCell imp_encoder = { DEV_ID_ENC, 0, 0};
 
@@ -219,7 +226,6 @@ int output_v4l2_frames(char *v4l2_device_path, int video_width, int video_height
   int nal_start, nal_end;
   uint8_t* buf;
   int len;
-
 
 
   ret = IMP_System_Bind(&framesource_chn, &imp_encoder);
@@ -263,7 +269,19 @@ int output_v4l2_frames(char *v4l2_device_path, int video_width, int video_height
     return -1;
   }
 
-  log_info("V4L2 device opened and setup complete.");
+  ret = ioctl(v4l2_fd, VIDIOC_STREAMON, &vid_format);
+  if (ret < 0) {
+    log_error("Unable to perform VIDIOC_STREAMON: %d", ret);
+    return -1;
+  }
+
+  log_info("V4L2 device opened and setup complete: VIDIOC_STREAMON");
+  
+
+
+  log_info("Sleeping 10 seconds before starting to send frames...");
+  sleep(10);
+
 
 
   ret = IMP_Encoder_StartRecvPic(0);
@@ -272,10 +290,26 @@ int output_v4l2_frames(char *v4l2_device_path, int video_width, int video_height
     return -1;
   }
 
+  // Every set number of frames calculate out how many frames per second we are getting
+  current_fps = 0;
+  frames_written = 0;
+  gettimeofday(&tval_before, NULL);
 
   while(!sigint_received) {
 
-    usleep(50 * 1000);
+    //usleep(40 * 1000);
+
+    if (frames_written == 200) {
+      gettimeofday(&tval_after, NULL);
+      timersub(&tval_after, &tval_before, &tval_result);
+
+      elapsed_seconds =  (long int)tval_result.tv_sec + ((long int)tval_result.tv_usec / 1000000);
+
+      current_fps = 200 / elapsed_seconds;
+      log_info("Current FPS: %.2f", current_fps);
+      frames_written = 0;
+      gettimeofday(&tval_before, NULL);
+    }
 
 
     ret = IMP_Encoder_PollingStream(0, 1000);
@@ -324,15 +358,15 @@ int output_v4l2_frames(char *v4l2_device_path, int video_width, int video_height
 
     // hexdump("NAL Packet", stream.pack[i].virAddr, 10);
 
+    /*
     ret = find_nal_unit(stream_chunk, total, &nal_start, &nal_end);
 
     if (ret > 0) {
       log_debug("Found a NAL unit: %d", ret);
       read_nal_unit(h, &stream_chunk[nal_start], nal_end - nal_start);
       debug_nal(h, h->nal);
-
-      // log_error("Unable to find start or end of NAL in buffer. Return code: %d", ret);
     }
+    */
 
     // Write out to the V4L2 device (for example /dev/video0)
     ret = write(v4l2_fd, (void *)stream_chunk, total);
@@ -345,6 +379,8 @@ int output_v4l2_frames(char *v4l2_device_path, int video_width, int video_height
     free(stream_chunk);
 
     IMP_Encoder_ReleaseStream(0, &stream);
+
+    frames_written = frames_written + 1;
   }
 
 

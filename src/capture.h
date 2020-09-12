@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
+#include <time.h>
 
 #include <imp_log.h>
 #include <imp_common.h>
@@ -18,6 +19,7 @@
 #include <linux/videodev2.h>
 #include <h264_stream.h>
 
+#include <json.h>
 
 #define SENSOR_NAME				"jxf23"
 #define SENSOR_CUBS_TYPE        TX_SENSOR_CONTROL_INTERFACE_I2C
