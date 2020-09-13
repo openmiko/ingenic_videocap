@@ -83,14 +83,14 @@ int initialize_sensor(IMPSensorInfo *sensor_info)
 
 }
 
-int setup_framesource()
+int setup_framesource(StreamSettings* stream_settings, int channel)
 {
   int ret;
 
   IMPFSChnAttr fs_chn_attr = {
     .pixFmt = PIX_FMT_NV12,
-    .outFrmRateNum = SENSOR_FRAME_RATE_NUM,
-    .outFrmRateDen = SENSOR_FRAME_RATE_DEN,
+    .outFrmRateNum = stream_settings->frame_rate_numerator,
+    .outFrmRateDen = stream_settings->frame_rate_denominator,
     .nrVBs = 3,
     .type = FS_PHY_CHANNEL,
 
@@ -109,19 +109,19 @@ int setup_framesource()
 
   log_info("Setting up frame source.");
 
-  ret = IMP_FrameSource_CreateChn(0, &fs_chn_attr);
+  ret = IMP_FrameSource_CreateChn(channel, &fs_chn_attr);
   if(ret < 0){
     log_error("IMP_FrameSource_CreateChn error.");
     return -1;
   }
 
-  ret = IMP_FrameSource_SetChnAttr(0, &fs_chn_attr);
+  ret = IMP_FrameSource_SetChnAttr(channel, &fs_chn_attr);
   if (ret < 0) {
     log_error("IMP_FrameSource_SetChnAttr error.");
     return -1;
   }
 
-  ret = IMP_Encoder_CreateGroup(0);
+  ret = IMP_Encoder_CreateGroup(channel);
   if (ret < 0) {
     log_error("IMP_Encoder_CreateGroup error.");
     return -1;
@@ -132,7 +132,7 @@ int setup_framesource()
   return 0;
 }
 
-int setup_encoding_engine(int video_width, int video_height, int fps)
+int setup_encoding_engine(StreamSettings* stream_settings)
 {
   int i, ret;
   IMPEncoderAttr *enc_attr;
@@ -145,28 +145,48 @@ int setup_encoding_engine(int video_width, int video_height, int fps)
 
   memset(&channel_attr, 0, sizeof(IMPEncoderCHNAttr));
   enc_attr = &channel_attr.encAttr;
-  enc_attr->enType = PT_H264;
-  enc_attr->bufSize = 0;
-  enc_attr->profile = 0;
-  enc_attr->picWidth = video_width;
-  enc_attr->picHeight = video_height;
+
+  if (strcmp(stream_settings->payload_type, "PT_H264") == 0) {
+    enc_attr->enType = PT_H264;
+  }
+  else {
+    log_error("Unknown payload type: %s", stream_settings->payload_type);
+    return -1;
+  }
+
+  enc_attr->bufSize = stream_settings->buffer_size;
+  enc_attr->profile = stream_settings->profile;
+  enc_attr->picWidth = stream_settings->pic_width;
+  enc_attr->picHeight = stream_settings->pic_height;
   rc_attr = &channel_attr.rcAttr;
 
 
-  rc_attr->rcMode = ENC_RC_MODE_H264VBR;
-  rc_attr->attrH264Vbr.outFrmRate.frmRateNum = fps;
-  rc_attr->attrH264Vbr.outFrmRate.frmRateDen = 1;
-  rc_attr->attrH264Vbr.maxGop = 10;
-  rc_attr->attrH264Vbr.maxQp = 38;
-  rc_attr->attrH264Vbr.minQp = 15;
-  rc_attr->attrH264Vbr.staticTime = 1;
-  rc_attr->attrH264Vbr.maxBitRate = 500;
-  rc_attr->attrH264Vbr.changePos = 50;
-  rc_attr->attrH264Vbr.FrmQPStep = 3;
-  rc_attr->attrH264Vbr.GOPQPStep = 15;
+
+  if (strcmp(stream_settings->mode, "ENC_RC_MODE_H264VBR") == 0) {
+    rc_attr->rcMode = ENC_RC_MODE_H264VBR;
+  }
+  else {
+    log_error("Unknown encoding mode: %s", stream_settings->mode);
+  }
+
+
+  rc_attr->attrH264Vbr.outFrmRate.frmRateNum = stream_settings->frame_rate_numerator;
+  rc_attr->attrH264Vbr.outFrmRate.frmRateDen = stream_settings->frame_rate_denominator;
+  rc_attr->attrH264Vbr.maxGop = stream_settings->max_group_of_pictures;
+  rc_attr->attrH264Vbr.maxQp = stream_settings->max_qp;
+  rc_attr->attrH264Vbr.minQp = stream_settings->min_qp;
+  rc_attr->attrH264Vbr.staticTime = stream_settings->statistics_interval;
+  rc_attr->attrH264Vbr.maxBitRate = stream_settings->max_bitrate;
+  rc_attr->attrH264Vbr.changePos = stream_settings->change_pos;
+  rc_attr->attrH264Vbr.FrmQPStep = stream_settings->frame_qp_step;
+  rc_attr->attrH264Vbr.GOPQPStep = stream_settings->gop_qp_step;
   rc_attr->attrH264FrmUsed.enable = 1;
 
 
+  log_info("bufSize %d", enc_attr->bufSize);
+  log_info("profile %d", enc_attr->profile);
+  log_info("picWidth %d", enc_attr->picWidth);
+  log_info("picHeight %d", enc_attr->picHeight);
   log_info("frmRateNum %d", rc_attr->attrH264Vbr.outFrmRate.frmRateNum);
   log_info("frmRateDen %d", rc_attr->attrH264Vbr.outFrmRate.frmRateDen);
   log_info("maxGop %d", rc_attr->attrH264Vbr.maxGop);
@@ -278,9 +298,8 @@ int output_v4l2_frames(char *v4l2_device_path, int video_width, int video_height
   log_info("V4L2 device opened and setup complete: VIDIOC_STREAMON");
   
 
-
-  log_info("Sleeping 10 seconds before starting to send frames...");
-  sleep(10);
+  log_info("Sleeping 2 seconds before starting to send frames...");
+  sleep(2);
 
 
 
@@ -427,66 +446,4 @@ int sensor_cleanup(IMPSensorInfo *sensor_info)
   log_info("Sensor cleanup success.");
 
   return 0;
-}
-
-
-void hexdump(const char * desc, const void * addr, const int len) {
-    int i;
-    unsigned char buff[17];
-    const unsigned char * pc = (const unsigned char *)addr;
-
-    // Output description if given.
-
-    if (desc != NULL)
-        printf ("%s:\n", desc);
-
-    // Length checks.
-
-    if (len == 0) {
-        printf("  ZERO LENGTH\n");
-        return;
-    }
-    else if (len < 0) {
-        printf("  NEGATIVE LENGTH: %d\n", len);
-        return;
-    }
-
-    // Process every byte in the data.
-
-    for (i = 0; i < len; i++) {
-        // Multiple of 16 means new line (with line offset).
-
-        if ((i % 16) == 0) {
-            // Don't print ASCII buffer for the "zeroth" line.
-
-            if (i != 0)
-                printf ("  %s\n", buff);
-
-            // Output the offset.
-
-            printf ("  %04x ", i);
-        }
-
-        // Now the hex code for the specific character.
-        printf (" %02x", pc[i]);
-
-        // And buffer a printable ASCII character for later.
-
-        if ((pc[i] < 0x20) || (pc[i] > 0x7e)) // isprint() may be better.
-            buff[i % 16] = '.';
-        else
-            buff[i % 16] = pc[i];
-        buff[(i % 16) + 1] = '\0';
-    }
-
-    // Pad out last line if not exactly 16 characters.
-
-    while ((i % 16) != 0) {
-        printf ("   ");
-        i++;
-    }
-
-    // And print the final ASCII buffer.
-
-    printf ("  %s\n", buff);
 }

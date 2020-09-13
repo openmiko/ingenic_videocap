@@ -18,8 +18,8 @@
 #include <imp_encoder.h>
 #include <linux/videodev2.h>
 #include <h264_stream.h>
+#include <cJSON.h>
 
-#include <json.h>
 
 #define SENSOR_NAME				"jxf23"
 #define SENSOR_CUBS_TYPE        TX_SENSOR_CONTROL_INTERFACE_I2C
@@ -36,9 +36,30 @@
 #define SENSOR_WIDTH_SECOND			1920
 #define SENSOR_HEIGHT_SECOND		1080
 
+
+typedef struct stream_settings {
+	char name[255];
+	char payload_type[255];
+	int buffer_size;
+	int profile;
+	int pic_width;
+	int pic_height;
+	char mode[255];
+	int frame_rate_numerator;
+	int frame_rate_denominator;
+	int max_group_of_pictures;
+	int max_qp;
+	int min_qp;
+	int statistics_interval;
+	int max_bitrate;
+	int change_pos;
+	int frame_qp_step;
+	int gop_qp_step;	
+} StreamSettings;
+
 int initialize_sensor(IMPSensorInfo *sensor_info);
-int setup_framesource();
-int setup_encoding_engine(int video_width, int video_height, int fps);
+int setup_framesource(StreamSettings* stream_settings, int channel);
+int setup_encoding_engine(StreamSettings* stream_settings);
 int output_v4l2_frames(char *v4l2_device_path, int video_width, int video_height);
 int sensor_cleanup(IMPSensorInfo *sensor_info);
 void hexdump(const char * desc, const void * addr, const int len);
