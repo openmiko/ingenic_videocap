@@ -5,6 +5,9 @@ volatile sig_atomic_t sigint_received = 0; /* volatile might be necessary depend
                                               the system/implementation in use. 
                                               (see "C11 draft standard n1570: 5.1.2.3")*/
 
+pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+
 /* Signal Handler for SIGINT */
 void sigint_handler(int sig_num) 
 { 
@@ -22,6 +25,7 @@ int populate_stream_settings(StreamSettings *settings, cJSON *json)
 {
 
   cJSON *name = cJSON_GetObjectItemCaseSensitive(json, "name");
+  cJSON *v4l2_device_path = cJSON_GetObjectItemCaseSensitive(json, "v4l2_device_path");
   cJSON *payload_type = cJSON_GetObjectItemCaseSensitive(json, "payload_type");
   cJSON *buffer_size = cJSON_GetObjectItemCaseSensitive(json, "buffer_size");
   cJSON *profile = cJSON_GetObjectItemCaseSensitive(json, "profile");
@@ -38,7 +42,8 @@ int populate_stream_settings(StreamSettings *settings, cJSON *json)
   cJSON *change_pos = cJSON_GetObjectItemCaseSensitive(json, "change_pos");
   cJSON *frame_qp_step = cJSON_GetObjectItemCaseSensitive(json, "frame_qp_step");
   cJSON *gop_qp_step = cJSON_GetObjectItemCaseSensitive(json, "gop_qp_step");
-
+  cJSON *channel = cJSON_GetObjectItemCaseSensitive(json, "channel");
+  cJSON *group = cJSON_GetObjectItemCaseSensitive(json, "group");
 
   if (!cJSON_IsNumber(pic_width) || !cJSON_IsNumber(pic_height))
   {
@@ -47,6 +52,7 @@ int populate_stream_settings(StreamSettings *settings, cJSON *json)
   }
 
   strcpy(settings->name, name->valuestring);
+  strcpy(settings->v4l2_device_path, v4l2_device_path->valuestring);
   strcpy(settings->payload_type, payload_type->valuestring);
   settings->buffer_size = buffer_size->valueint;
   settings->profile = profile->valueint;
@@ -63,6 +69,38 @@ int populate_stream_settings(StreamSettings *settings, cJSON *json)
   settings->change_pos = change_pos->valueint;
   settings->frame_qp_step = frame_qp_step->valueint;
   settings->gop_qp_step = gop_qp_step->valueint;
+  settings->channel = channel->valueint;
+  settings->group = group->valueint;
+}
+
+void start_frame_producer_threads(StreamSettings stream_settings[], int num_streams)
+{
+  int ret, i;
+  pthread_t thread_ids[num_streams];
+
+  for (i = 0; i < num_streams; i++) {
+    ret = pthread_create(&thread_ids[i], NULL, produce_frames, &stream_settings[i]);
+    if (ret < 0) {
+      log_error("Error creating thread for stream %d: %d", i, ret);
+    }
+    log_info("Created frame producer thread id: %d", thread_ids[i]);
+  }
+
+  for (i = 0; i < num_streams; i++) {
+    log_info("Thread id %d go.", thread_ids[i]);
+    pthread_join(thread_ids[i], NULL);
+  }
+}
+
+
+
+
+void lock_callback(bool lock, void* udata) {
+  pthread_mutex_t *LOCK = (pthread_mutex_t*)(udata);
+  if (lock)
+    pthread_mutex_lock(LOCK);
+  else
+    pthread_mutex_unlock(LOCK);
 }
 
 
@@ -80,18 +118,15 @@ int main(int argc, const char *argv[])
   char* file_contents;
   cJSON *json;
 
-  cJSON *stream_settings;
-  cJSON *s1_json;
-  cJSON *s2_json;
+  cJSON *json_stream_settings;
+  cJSON *json_stream;
 
   cJSON *settings;
   cJSON *json_v4l2_device_path;
 
   char v4l2_device_path[255];
 
-  // Stream settings
-  StreamSettings s1_settings;
-  StreamSettings s2_settings;
+  StreamSettings stream_settings[MAX_STREAMS];
 
 
   if (argc != 2) {
@@ -102,6 +137,7 @@ int main(int argc, const char *argv[])
   signal(SIGINT, sigint_handler);
 
   log_set_level(LOG_INFO);
+  log_set_lock(lock_callback, &log_mutex);
 
 
   r = strcpy(filename, argv[1]);
@@ -157,26 +193,27 @@ int main(int argc, const char *argv[])
   strcpy(v4l2_device_path, json_v4l2_device_path->valuestring);
 
 
-  stream_settings = cJSON_GetObjectItemCaseSensitive(json, "stream_settings");
+  json_stream_settings = cJSON_GetObjectItemCaseSensitive(json, "stream_settings");
 
 
-  s1_json = cJSON_DetachItemFromArray(stream_settings, 0);
-  s2_json = cJSON_DetachItemFromArray(stream_settings, 1);
 
-
-  populate_stream_settings(&s1_settings, s1_json);
+  for (i = 0; i < MAX_STREAMS; ++i) {
+    // TODO: Will leak memory here because I lose the pointer to json_stream
+    json_stream = cJSON_DetachItemFromArray(json_stream_settings, 0);
+    populate_stream_settings(&stream_settings[i], json_stream);
+  }
 
 
 
   initialize_sensor(&sensor_info);
 
-  setup_framesource(&s1_settings, 0);
 
-  setup_encoding_engine(&s1_settings);
+  // This will suspend the main thread until the streams quit
+  start_frame_producer_threads(stream_settings, MAX_STREAMS);
 
-  // Create a thread that continuously outputs to the v4l2 device
-  output_v4l2_frames(v4l2_device_path, s1_settings.pic_width, s1_settings.pic_height);
 
+  // Resume execution
+  log_info("All threads completed. Cleaning up.");
   sensor_cleanup(&sensor_info);
 
 

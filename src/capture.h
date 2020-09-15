@@ -37,8 +37,11 @@
 #define SENSOR_HEIGHT_SECOND		1080
 
 
+#define MAX_STREAMS				2
+
 typedef struct stream_settings {
 	char name[255];
+	char v4l2_device_path[255];
 	char payload_type[255];
 	int buffer_size;
 	int profile;
@@ -54,12 +57,16 @@ typedef struct stream_settings {
 	int max_bitrate;
 	int change_pos;
 	int frame_qp_step;
-	int gop_qp_step;	
+	int gop_qp_step;
+	int channel;
+	int group;
 } StreamSettings;
 
 int initialize_sensor(IMPSensorInfo *sensor_info);
-int setup_framesource(StreamSettings* stream_settings, int channel);
+int setup_framesource(StreamSettings* stream_settings);
 int setup_encoding_engine(StreamSettings* stream_settings);
-int output_v4l2_frames(char *v4l2_device_path, int video_width, int video_height);
+int output_v4l2_frames(StreamSettings *stream_settings);
 int sensor_cleanup(IMPSensorInfo *sensor_info);
 void hexdump(const char * desc, const void * addr, const int len);
+void *produce_frames(void *ptr);
+void print_stream_settings(StreamSettings *stream_settings);
