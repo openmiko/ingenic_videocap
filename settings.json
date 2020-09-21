@@ -21,7 +21,18 @@
       "frame_qp_step": 3,
       "gop_qp_step": 15,
       "channel": 0,
-      "group": 0
+      "group": 0,
+      "pixel_format": "PIX_FMT_NV12",
+      "video_buffers": 3,
+      "channel_type": "FS_PHY_CHANNEL",
+      "crop_enable": 0,
+      "crop_top": 0,
+      "crop_left": 0,
+      "crop_width": 0,
+      "crop_height": 0,
+      "scaling_enable": 1,
+      "scaling_width": 1920,
+      "scaling_height": 1920
     },
     {
       "name": "secondary",
@@ -43,7 +54,18 @@
       "frame_qp_step": 3,
       "gop_qp_step": 15,
       "channel": 1,
-      "group": 1
+      "group": 1,
+      "pixel_format": "PIX_FMT_NV12",
+      "video_buffers": 3,
+      "channel_type": "FS_PHY_CHANNEL",
+      "crop_enable": 0,
+      "crop_top": 0,
+      "crop_left": 0,
+      "crop_width": 0,
+      "crop_height": 0,
+      "scaling_enable": 1,
+      "scaling_width": 640,
+      "scaling_height": 480
     }
   ]
 }

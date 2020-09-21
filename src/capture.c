@@ -391,8 +391,6 @@ int output_v4l2_frames(StreamSettings *stream_settings)
 
   while(!sigint_received) {
 
-    //usleep(40 * 1000);
-
     if (frames_written == 200) {
       gettimeofday(&tval_after, NULL);
       timersub(&tval_after, &tval_before, &tval_result);
@@ -404,7 +402,6 @@ int output_v4l2_frames(StreamSettings *stream_settings)
       frames_written = 0;
       gettimeofday(&tval_before, NULL);
     }
-
 
     ret = IMP_Encoder_PollingStream(stream_settings->channel, 1000);
     if (ret < 0) {

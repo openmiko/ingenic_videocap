@@ -1,9 +1,8 @@
 #include "capture.h"
 
-
-volatile sig_atomic_t sigint_received = 0; /* volatile might be necessary depending on 
-                                              the system/implementation in use. 
-                                              (see "C11 draft standard n1570: 5.1.2.3")*/
+/* volatile might be necessary depending on the system/implementation in use. 
+(see "C11 draft standard n1570: 5.1.2.3") */
+volatile sig_atomic_t sigint_received = 0; 
 
 pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -21,57 +20,6 @@ void sigint_handler(int sig_num)
 }
 
 
-int populate_stream_settings(StreamSettings *settings, cJSON *json)
-{
-
-  cJSON *name = cJSON_GetObjectItemCaseSensitive(json, "name");
-  cJSON *v4l2_device_path = cJSON_GetObjectItemCaseSensitive(json, "v4l2_device_path");
-  cJSON *payload_type = cJSON_GetObjectItemCaseSensitive(json, "payload_type");
-  cJSON *buffer_size = cJSON_GetObjectItemCaseSensitive(json, "buffer_size");
-  cJSON *profile = cJSON_GetObjectItemCaseSensitive(json, "profile");
-  cJSON *pic_width = cJSON_GetObjectItemCaseSensitive(json, "pic_width");
-  cJSON *pic_height = cJSON_GetObjectItemCaseSensitive(json, "pic_height");
-  cJSON *mode = cJSON_GetObjectItemCaseSensitive(json, "mode");
-  cJSON *frame_rate_numerator = cJSON_GetObjectItemCaseSensitive(json, "frame_rate_numerator");
-  cJSON *frame_rate_denominator = cJSON_GetObjectItemCaseSensitive(json, "frame_rate_denominator");
-  cJSON *max_group_of_pictures = cJSON_GetObjectItemCaseSensitive(json, "max_group_of_pictures");
-  cJSON *max_qp = cJSON_GetObjectItemCaseSensitive(json, "max_qp");
-  cJSON *min_qp = cJSON_GetObjectItemCaseSensitive(json, "min_qp");
-  cJSON *statistics_interval = cJSON_GetObjectItemCaseSensitive(json, "statistics_interval");
-  cJSON *max_bitrate = cJSON_GetObjectItemCaseSensitive(json, "max_bitrate");
-  cJSON *change_pos = cJSON_GetObjectItemCaseSensitive(json, "change_pos");
-  cJSON *frame_qp_step = cJSON_GetObjectItemCaseSensitive(json, "frame_qp_step");
-  cJSON *gop_qp_step = cJSON_GetObjectItemCaseSensitive(json, "gop_qp_step");
-  cJSON *channel = cJSON_GetObjectItemCaseSensitive(json, "channel");
-  cJSON *group = cJSON_GetObjectItemCaseSensitive(json, "group");
-
-  if (!cJSON_IsNumber(pic_width) || !cJSON_IsNumber(pic_height))
-  {
-    log_error("pic_width or pic_height must be a number");
-    return -1;
-  }
-
-  strcpy(settings->name, name->valuestring);
-  strcpy(settings->v4l2_device_path, v4l2_device_path->valuestring);
-  strcpy(settings->payload_type, payload_type->valuestring);
-  settings->buffer_size = buffer_size->valueint;
-  settings->profile = profile->valueint;
-  settings->pic_width = pic_width->valueint;
-  settings->pic_height = pic_height->valueint;
-  strcpy(settings->mode, mode->valuestring);
-  settings->frame_rate_numerator = frame_rate_numerator->valueint;
-  settings->frame_rate_denominator = frame_rate_denominator->valueint;
-  settings->max_group_of_pictures = max_group_of_pictures->valueint;
-  settings->max_qp = max_qp->valueint;
-  settings->min_qp = min_qp->valueint;
-  settings->statistics_interval = statistics_interval->valueint;
-  settings->max_bitrate = max_bitrate->valueint;
-  settings->change_pos = change_pos->valueint;
-  settings->frame_qp_step = frame_qp_step->valueint;
-  settings->gop_qp_step = gop_qp_step->valueint;
-  settings->channel = channel->valueint;
-  settings->group = group->valueint;
-}
 
 void start_frame_producer_threads(StreamSettings stream_settings[], int num_streams)
 {
@@ -107,8 +55,8 @@ void lock_callback(bool lock, void* udata) {
 int main(int argc, const char *argv[])
 {
   int i, ret;
-  IMPSensorInfo sensor_info;
   char *r;
+  IMPSensorInfo sensor_info;
 
   // Variables related to parsing the JSON config file
   char filename[255];
@@ -202,7 +150,6 @@ int main(int argc, const char *argv[])
     json_stream = cJSON_DetachItemFromArray(json_stream_settings, 0);
     populate_stream_settings(&stream_settings[i], json_stream);
   }
-
 
 
   initialize_sensor(&sensor_info);

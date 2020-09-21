@@ -1,4 +1,9 @@
+#ifndef CAPTURE_H /* include guard */
+#define CAPTURE_H
+
+
 #include "log.h"
+#include "configparser.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -60,6 +65,17 @@ typedef struct stream_settings {
 	int gop_qp_step;
 	int channel;
 	int group;
+	char pixel_format[255];
+	int video_buffers;
+	char channel_type[255];
+	int crop_enable;
+	int crop_top;
+	int crop_left;
+	int crop_width;
+	int crop_height;
+	int scaling_enable;
+	int scaling_width;
+	int scaling_height;
 } StreamSettings;
 
 int initialize_sensor(IMPSensorInfo *sensor_info);
@@ -70,3 +86,5 @@ int sensor_cleanup(IMPSensorInfo *sensor_info);
 void hexdump(const char * desc, const void * addr, const int len);
 void *produce_frames(void *ptr);
 void print_stream_settings(StreamSettings *stream_settings);
+
+#endif /* CAPTURE_H */
