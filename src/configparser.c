@@ -1,5 +1,6 @@
 #include "configparser.h"
-
+#include "streamsettings.h"
+#include "log.h"
 
 int populate_stream_settings(StreamSettings *settings, cJSON *json)
 {

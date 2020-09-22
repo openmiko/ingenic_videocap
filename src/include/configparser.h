@@ -1,7 +1,8 @@
 #ifndef CONFIGPARSER_H
 #define CONFIGPARSER_H
 
-#include "capture.h"
+#include <cJSON.h>
+#include "streamsettings.h"
 
 int populate_stream_settings(StreamSettings *settings, cJSON *json);
 
