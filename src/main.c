@@ -6,6 +6,7 @@ volatile sig_atomic_t sigint_received = 0;
 
 pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+snd_pcm_t *pcm_handle;
 
 /* Signal Handler for SIGINT */
 void sigint_handler(int sig_num) 
@@ -57,6 +58,7 @@ int main(int argc, const char *argv[])
   int i, ret;
   char *r;
   IMPSensorInfo sensor_info;
+  
 
   // Variables related to parsing the JSON config file
   char filename[255];
@@ -153,6 +155,7 @@ int main(int argc, const char *argv[])
 
 
   initialize_sensor(&sensor_info);
+  initialize_audio();
 
 
   // This will suspend the main thread until the streams quit

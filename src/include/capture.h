@@ -14,6 +14,7 @@
 #include <sys/ioctl.h>
 #include <time.h>
 
+#include <imp_audio.h>
 #include <imp_log.h>
 #include <imp_common.h>
 #include <imp_osd.h>
@@ -24,6 +25,7 @@
 #include <linux/videodev2.h>
 #include <h264_stream.h>
 #include <cJSON.h>
+#include <alsa/asoundlib.h>
 
 
 #define SENSOR_NAME				"jxf23"
@@ -46,6 +48,7 @@
 
 
 int initialize_sensor(IMPSensorInfo *sensor_info);
+int initialize_audio();
 int setup_framesource(StreamSettings* stream_settings);
 int setup_encoding_engine(StreamSettings* stream_settings);
 int output_v4l2_frames(StreamSettings *stream_settings);

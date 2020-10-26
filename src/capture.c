@@ -9,6 +9,8 @@ IMP - Ingenic Multimedia Platform
 
 extern sig_atomic_t sigint_received;
 
+extern snd_pcm_t *pcm_handle;
+
 int initialize_sensor(IMPSensorInfo *sensor_info)
 {
   int ret;
@@ -82,6 +84,145 @@ int initialize_sensor(IMPSensorInfo *sensor_info)
 	return 0;
 
 }
+
+int initialize_audio()
+{
+  int ret;
+  int device_id = 1;
+  int audio_channel_id = 0;
+
+  IMPAudioIOAttr audio_settings;
+  IMPAudioIChnParam audio_channel_params;
+
+  log_info("Initializing audio settings");
+
+  audio_settings.samplerate = AUDIO_SAMPLE_RATE_48000;
+  audio_settings.bitwidth = AUDIO_BIT_WIDTH_16;
+  audio_settings.soundmode = AUDIO_SOUND_MODE_MONO; 
+
+  // Number of audio frames to cache (max is 50) 
+  audio_settings.frmNum = MAX_AUDIO_FRAME_NUM;
+
+  // Number of sampling points per frame
+  audio_settings.numPerFrm = 1000;
+  audio_settings.chnCnt = 1;
+
+
+
+  // ALSA
+  snd_pcm_hw_params_t *pcm_hw_params;
+  snd_pcm_uframes_t pcm_frames;
+  int sample_rate, audio_channels;
+
+
+
+
+  ret = IMP_AI_SetPubAttr(device_id, &audio_settings);
+
+  if(ret < 0){
+    log_error("Error in setting attributes for audio encoder\n");
+    return -1;
+  }
+
+  log_info("Sample rate: %d", audio_settings.samplerate);
+  log_info("Bit width: %d", audio_settings.bitwidth);
+  log_info("Sound mode: %d", audio_settings.soundmode);
+  log_info("Max frames to cache: %d", audio_settings.frmNum);
+  log_info("Samples per frame: %d", audio_settings.numPerFrm);
+
+  /* Step 2: enable AI device. */
+  ret = IMP_AI_Enable(device_id);
+  if(ret != 0) {
+    log_error("Error enabling the audio device: %d", device_id);
+    return -1;
+  }
+
+
+  // Set audio channel attributes of device
+
+  // Audio frame buffer depth
+  audio_channel_params.usrFrmDepth = 20;
+
+  ret = IMP_AI_SetChnParam(device_id, audio_channel_id, &audio_channel_params);
+  if(ret != 0) {
+    log_error("Error setting the audio channel parameters for device %d", device_id);
+    return -1;
+  }
+
+  // Step 4: enable AI channel.
+  ret = IMP_AI_EnableChn(device_id, audio_channel_id);
+  if(ret != 0) {
+    log_error("Error enabling audio channel");
+    return -1;
+  }
+
+  /* Step 5: Set audio channel volume. */
+  ret = IMP_AI_SetVol(device_id, audio_channel_id, 70);
+  if(ret != 0) {
+    log_error("Error setting the audio channel volume");
+    return -1;
+  }  
+
+
+
+  // ALSA loopback device setup
+  // Found good sample code here: https://gist.github.com/ghedo/963382/98f730d61dad5b6fdf0c4edb7a257c5f9700d83b
+
+  ret = snd_pcm_open(&pcm_handle, "hw:0,0", SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
+  if(ret != 0) {
+    log_error("Error opening ALSA PCM loopback device.");
+    return -1;
+  }
+
+
+
+  /* Allocate parameters object and fill it with default values*/
+  snd_pcm_hw_params_alloca(&pcm_hw_params);
+  snd_pcm_hw_params_any(pcm_handle, pcm_hw_params);
+
+
+  audio_channels = 1;
+  sample_rate = 48000;
+
+  /* Set parameters */
+  if (ret = snd_pcm_hw_params_set_access(pcm_handle, pcm_hw_params, SND_PCM_ACCESS_RW_INTERLEAVED) < 0) {    
+    log_error("ERROR: Can't set interleaved mode. %s\n", snd_strerror(ret));
+  }
+
+  if (ret = snd_pcm_hw_params_set_format(pcm_handle, pcm_hw_params, SND_PCM_FORMAT_S16_LE) < 0)  {
+    log_error("ERROR: Can't set format. %s\n", snd_strerror(ret));
+  }
+
+  if (ret = snd_pcm_hw_params_set_channels(pcm_handle, pcm_hw_params, audio_channels) < 0) {
+    log_error("ERROR: Can't set channels number. %s\n", snd_strerror(ret));
+  }
+
+  if (ret = snd_pcm_hw_params_set_rate_near(pcm_handle, pcm_hw_params, &sample_rate, 0) < 0) {    
+    log_error("ERROR: Can't set rate. %s\n", snd_strerror(ret));  
+  }
+
+  /* Write parameters */
+  if (ret = snd_pcm_hw_params(pcm_handle, pcm_hw_params) < 0) {    
+    log_error("ERROR: Can't set harware parameters. %s\n", snd_strerror(ret));
+  }
+
+
+
+  log_info("PCM name: %s", snd_pcm_name(pcm_handle));
+  log_info("PCM state: %s", snd_pcm_state_name(snd_pcm_state(pcm_handle)));
+
+  snd_pcm_hw_params_get_channels(pcm_hw_params, &audio_channels);
+  log_info("PCM channels: %d", audio_channels);
+
+  snd_pcm_hw_params_get_rate(pcm_hw_params, &sample_rate, 0);
+  log_info("PCM sample rate: %d bps", sample_rate);
+
+
+  log_info("Audio initialization complete");
+
+  return 0;
+}
+
 
 int setup_framesource(StreamSettings* stream_settings)
 {
@@ -206,7 +347,7 @@ int setup_encoding_engine(StreamSettings* stream_settings)
     return -1;
   }
 
-  return 0;  
+  return 0;
 
 }
 
@@ -300,6 +441,12 @@ int output_v4l2_frames(StreamSettings *stream_settings)
   uint8_t *stream_chunk;
   uint8_t *temp_chunk;
 
+  // Audio device
+  int audio_device_id = 1;
+  int audio_channel_id = 0;
+  IMPAudioFrame audio_frame;
+  int num_samples;
+  short pcm_audio_data[1024];
 
   // h264 NAL unit stuff
   h264_stream_t *h = h264_new();
@@ -390,6 +537,53 @@ int output_v4l2_frames(StreamSettings *stream_settings)
   gettimeofday(&tval_before, NULL);
 
   while(!sigint_received) {
+
+    // Audio Frames
+
+    int ret = IMP_AI_PollingFrame(audio_device_id, audio_channel_id, 1000);
+    if (ret < 0) {
+      log_error("Error polling for audio frame");
+      return -1;
+    }
+
+    ret = IMP_AI_GetFrame(audio_device_id, audio_channel_id, &audio_frame, BLOCK);
+    if (ret < 0) {
+      log_error("Error getting audio frame data");
+      return -1;
+    }
+
+    num_samples = audio_frame.len / sizeof(short);
+
+
+
+    memcpy(pcm_audio_data, (void *)audio_frame.virAddr, audio_frame.len);
+
+
+    ret = IMP_AI_ReleaseFrame(audio_device_id, audio_channel_id, &audio_frame);
+    if(ret != 0) {
+      log_error("Error releasing audio frame");
+      return -1;
+    }
+
+    log_info("Obtained %d 16-bit samples from audio frame", num_samples);
+
+
+    if (ret = snd_pcm_writei(pcm_handle, pcm_audio_data, num_samples) == -EPIPE) {
+      log_error("Buffer XRUN when writing to ALSA loopback device");
+      snd_pcm_prepare(pcm_handle);
+    } else if (ret < 0) {
+      log_error("ERROR. Can't write to PCM device. %s\n", snd_strerror(ret));
+    }
+
+
+
+
+
+
+
+    // Video Frames
+
+
 
     if (frames_written == 200) {
       gettimeofday(&tval_after, NULL);
