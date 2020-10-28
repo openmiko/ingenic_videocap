@@ -168,7 +168,7 @@ int initialize_audio()
   // ALSA loopback device setup
   // Found good sample code here: https://gist.github.com/ghedo/963382/98f730d61dad5b6fdf0c4edb7a257c5f9700d83b
 
-  ret = snd_pcm_open(&pcm_handle, "hw:0,0", SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
+  ret = snd_pcm_open(&pcm_handle, "hw:0,0", SND_PCM_STREAM_PLAYBACK, 0);
   if(ret != 0) {
     log_error("Error opening ALSA PCM loopback device.");
     return -1;
@@ -565,11 +565,11 @@ int output_v4l2_frames(StreamSettings *stream_settings)
       return -1;
     }
 
-    log_info("Obtained %d 16-bit samples from audio frame", num_samples);
+    log_debug("Obtained %d 16-bit samples from audio frame", num_samples);
 
 
     if (ret = snd_pcm_writei(pcm_handle, pcm_audio_data, num_samples) == -EPIPE) {
-      log_error("Buffer XRUN when writing to ALSA loopback device");
+      // log_error("Buffer overrun when writing to ALSA loopback device");
       snd_pcm_prepare(pcm_handle);
     } else if (ret < 0) {
       log_error("ERROR. Can't write to PCM device. %s\n", snd_strerror(ret));
