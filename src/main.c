@@ -28,6 +28,12 @@ void start_frame_producer_threads(StreamSettings stream_settings[], int num_stre
   pthread_t thread_ids[num_streams];
 
   for (i = 0; i < num_streams; i++) {
+
+    if (stream_settings[i].enabled == 0) {
+      log_info("Stream %d is not enabled. Skipping.", i);
+      continue;
+    }
+
     ret = pthread_create(&thread_ids[i], NULL, produce_frames, &stream_settings[i]);
     if (ret < 0) {
       log_error("Error creating thread for stream %d: %d", i, ret);
@@ -36,11 +42,12 @@ void start_frame_producer_threads(StreamSettings stream_settings[], int num_stre
   }
 
   for (i = 0; i < num_streams; i++) {
-    log_info("Thread id %d go.", thread_ids[i]);
-    pthread_join(thread_ids[i], NULL);
+    if (stream_settings[i].enabled == 1) {
+      log_info("Thread id %d go.", thread_ids[i]);
+      pthread_join(thread_ids[i], NULL);
+    }
   }
 }
-
 
 
 
@@ -51,6 +58,9 @@ void lock_callback(bool lock, void* udata) {
   else
     pthread_mutex_unlock(LOCK);
 }
+
+// TODO: Possible refactoring methods
+// Parsing JSON file
 
 
 int main(int argc, const char *argv[])
@@ -72,10 +82,8 @@ int main(int argc, const char *argv[])
   cJSON *json_stream;
 
   cJSON *settings;
-  cJSON *json_v4l2_device_path;
 
-  char v4l2_device_path[255];
-
+  int num_stream_settings;
   StreamSettings stream_settings[MAX_STREAMS];
 
 
@@ -86,10 +94,14 @@ int main(int argc, const char *argv[])
 
   signal(SIGINT, sigint_handler);
 
+
+  // Configure logging
   log_set_level(LOG_INFO);
   log_set_lock(lock_callback, &log_mutex);
 
 
+
+  // Reading the JSON file into memory  
   r = strcpy(filename, argv[1]);
   if (r == NULL) {
     log_error("Error copying json config path.");
@@ -125,6 +137,8 @@ int main(int argc, const char *argv[])
   }
   fclose(fp);
 
+
+  // Parsing the JSON file
   json = cJSON_ParseWithLength(file_contents, file_size);
   if (json == NULL) {
     log_error("Unable to parse JSON data");
@@ -139,18 +153,26 @@ int main(int argc, const char *argv[])
     return -1;
   }
 
-  json_v4l2_device_path = cJSON_GetObjectItemCaseSensitive(json, "v4l2_device_path");
-  strcpy(v4l2_device_path, json_v4l2_device_path->valuestring);
-
 
   json_stream_settings = cJSON_GetObjectItemCaseSensitive(json, "stream_settings");
+  if (json_stream_settings == NULL) {
+    log_error("Key 'stream_settings' not found in JSON.");
+    return -1;
+  }
+
+  num_stream_settings = cJSON_GetArraySize(json_stream_settings);
+  log_info("Found %d stream settings elements in JSON.", num_stream_settings);
 
 
-
-  for (i = 0; i < MAX_STREAMS; ++i) {
-    // TODO: Will leak memory here because I lose the pointer to json_stream
+  for (i = 0; i < num_stream_settings; ++i) {
     json_stream = cJSON_DetachItemFromArray(json_stream_settings, 0);
-    populate_stream_settings(&stream_settings[i], json_stream);
+    
+    if( populate_stream_settings(&stream_settings[i], json_stream) != 0) {
+      cJSON_Delete(json_stream);
+      return -1;
+    }
+
+    cJSON_Delete(json_stream);
   }
 
 
@@ -159,7 +181,7 @@ int main(int argc, const char *argv[])
 
 
   // This will suspend the main thread until the streams quit
-  start_frame_producer_threads(stream_settings, MAX_STREAMS);
+  start_frame_producer_threads(stream_settings, num_stream_settings);
 
 
   // Resume execution

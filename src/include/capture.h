@@ -49,10 +49,11 @@
 
 int initialize_sensor(IMPSensorInfo *sensor_info);
 int initialize_audio();
+int create_encoding_group(StreamSettings* stream_settings);
 int setup_framesource(StreamSettings* stream_settings);
-int setup_encoding_engine(StreamSettings* stream_settings);
-int output_v4l2_frames(StreamSettings *stream_settings);
-int sensor_cleanup(IMPSensorInfo *sensor_info);
+int setup_encoding_engine(StreamSettings* stream_settings, EncoderSetting* encoder_setting);
+int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_setting);
+int sensor_cleanup(IMPSensorInfo* sensor_info);
 void hexdump(const char * desc, const void * addr, const int len);
 void *produce_frames(void *ptr);
 void print_stream_settings(StreamSettings *stream_settings);

@@ -104,7 +104,7 @@ int initialize_audio()
   audio_settings.frmNum = MAX_AUDIO_FRAME_NUM;
 
   // Number of sampling points per frame
-  audio_settings.numPerFrm = 1000;
+  audio_settings.numPerFrm = 960;
   audio_settings.chnCnt = 1;
 
 
@@ -224,14 +224,28 @@ int initialize_audio()
 }
 
 
+int create_encoding_group(StreamSettings* stream_settings)
+{
+  int ret;
+
+  ret = IMP_Encoder_CreateGroup(stream_settings->group);
+  if (ret < 0) {
+    log_error("IMP_Encoder_CreateGroup error.");
+    return -1;
+  }
+
+  return 0;
+}
+
+
 int setup_framesource(StreamSettings* stream_settings)
 {
   int ret;
 
   IMPFSChnAttr fs_chn_attr = {
     .pixFmt = PIX_FMT_NV12,
-    .outFrmRateNum = stream_settings->frame_rate_numerator,
-    .outFrmRateDen = stream_settings->frame_rate_denominator,
+    .outFrmRateNum = 25,
+    .outFrmRateDen = 1,
     .nrVBs = 3,
     .type = FS_PHY_CHANNEL,
 
@@ -251,30 +265,48 @@ int setup_framesource(StreamSettings* stream_settings)
   log_info("Setting up frame source for stream: %s", stream_settings->name);
 
 
-  ret = IMP_FrameSource_CreateChn(stream_settings->channel, &fs_chn_attr);
+  ret = IMP_FrameSource_CreateChn(0, &fs_chn_attr);
   if(ret < 0){
     log_error("IMP_FrameSource_CreateChn error.");
     return -1;
   }
 
-  ret = IMP_FrameSource_SetChnAttr(stream_settings->channel, &fs_chn_attr);
+  ret = IMP_FrameSource_SetChnAttr(0, &fs_chn_attr);
   if (ret < 0) {
     log_error("IMP_FrameSource_SetChnAttr error.");
     return -1;
   }
 
-  ret = IMP_Encoder_CreateGroup(stream_settings->group);
-  if (ret < 0) {
-    log_error("IMP_Encoder_CreateGroup error.");
+  ret = IMP_FrameSource_CreateChn(1, &fs_chn_attr);
+  if(ret < 0){
+    log_error("IMP_FrameSource_CreateChn error.");
     return -1;
   }
+
+  ret = IMP_FrameSource_SetChnAttr(1, &fs_chn_attr);
+  if (ret < 0) {
+    log_error("IMP_FrameSource_SetChnAttr error.");
+    return -1;
+  }
+
+  // ret = IMP_FrameSource_CreateChn(stream_settings->channel, &fs_chn_attr);
+  // if(ret < 0){
+  //   log_error("IMP_FrameSource_CreateChn error.");
+  //   return -1;
+  // }
+
+  // ret = IMP_FrameSource_SetChnAttr(stream_settings->channel, &fs_chn_attr);
+  // if (ret < 0) {
+  //   log_error("IMP_FrameSource_SetChnAttr error.");
+  //   return -1;
+  // }
 
   log_info("Frame source setup complete: %s", stream_settings->name);
 
   return 0;
 }
 
-int setup_encoding_engine(StreamSettings* stream_settings)
+int setup_encoding_engine(StreamSettings* stream_settings, EncoderSetting *encoder_setting)
 {
   int i, ret;
   IMPEncoderAttr *enc_attr;
@@ -288,60 +320,67 @@ int setup_encoding_engine(StreamSettings* stream_settings)
   memset(&channel_attr, 0, sizeof(IMPEncoderCHNAttr));
   enc_attr = &channel_attr.encAttr;
 
-  if (strcmp(stream_settings->payload_type, "PT_H264") == 0) {
+  if (strcmp(encoder_setting->payload_type, "PT_H264") == 0) {
     enc_attr->enType = PT_H264;
   }
-  else if(strcmp(stream_settings->payload_type, "PT_JPEG") == 0) {
+  else if(strcmp(encoder_setting->payload_type, "PT_JPEG") == 0) {
     enc_attr->enType = PT_JPEG;
   }
   else {
-    log_error("Unknown payload type: %s", stream_settings->payload_type);
+    log_error("Unknown payload type: %s", encoder_setting->payload_type);
     return -1;
   }
 
-  enc_attr->bufSize = stream_settings->buffer_size;
-  enc_attr->profile = stream_settings->profile;
+  enc_attr->bufSize = encoder_setting->buffer_size;
+  enc_attr->profile = encoder_setting->profile;
   enc_attr->picWidth = stream_settings->pic_width;
   enc_attr->picHeight = stream_settings->pic_height;
   rc_attr = &channel_attr.rcAttr;
 
 
 
-  if (strcmp(stream_settings->mode, "ENC_RC_MODE_H264VBR") == 0) {
+  if (strcmp(encoder_setting->mode, "ENC_RC_MODE_H264VBR") == 0) {
     rc_attr->rcMode = ENC_RC_MODE_H264VBR;
   }
-  else if (strcmp(stream_settings->mode, "MJPEG") == 0) {
+  else if (strcmp(encoder_setting->mode, "MJPEG") == 0) {
     rc_attr->rcMode = 0;
   }
   else {
-    log_error("Unknown encoding mode: %s", stream_settings->mode);
+    log_error("Unknown encoding mode: %s", encoder_setting->mode);
   }
 
 
-  rc_attr->attrH264Vbr.outFrmRate.frmRateNum = stream_settings->frame_rate_numerator;
-  rc_attr->attrH264Vbr.outFrmRate.frmRateDen = stream_settings->frame_rate_denominator;
-  rc_attr->attrH264Vbr.maxGop = stream_settings->max_group_of_pictures;
-  rc_attr->attrH264Vbr.maxQp = stream_settings->max_qp;
-  rc_attr->attrH264Vbr.minQp = stream_settings->min_qp;
-  rc_attr->attrH264Vbr.staticTime = stream_settings->statistics_interval;
-  rc_attr->attrH264Vbr.maxBitRate = stream_settings->max_bitrate;
-  rc_attr->attrH264Vbr.changePos = stream_settings->change_pos;
-  rc_attr->attrH264Vbr.FrmQPStep = stream_settings->frame_qp_step;
-  rc_attr->attrH264Vbr.GOPQPStep = stream_settings->gop_qp_step;
+  rc_attr->attrH264Vbr.outFrmRate.frmRateNum = encoder_setting->frame_rate_numerator;
+  rc_attr->attrH264Vbr.outFrmRate.frmRateDen = encoder_setting->frame_rate_denominator;
+  rc_attr->attrH264Vbr.maxGop = encoder_setting->max_group_of_pictures;
+  rc_attr->attrH264Vbr.maxQp = encoder_setting->max_qp;
+  rc_attr->attrH264Vbr.minQp = encoder_setting->min_qp;
+  
+  // rc_attr->attrH264Vbr.staticTime = stream_settings->statistics_interval;
+  // rc_attr->attrH264Vbr.maxBitRate = stream_settings->max_bitrate;
+  // rc_attr->attrH264Vbr.changePos = stream_settings->change_pos;
+
+  rc_attr->attrH264Vbr.staticTime = 1;
+  rc_attr->attrH264Vbr.maxBitRate = 500;
+  rc_attr->attrH264Vbr.changePos = 50;
+
+
+  rc_attr->attrH264Vbr.FrmQPStep = encoder_setting->frame_qp_step;
+  rc_attr->attrH264Vbr.GOPQPStep = encoder_setting->gop_qp_step;
   rc_attr->attrH264FrmUsed.enable = 1;
 
 
-  ret = IMP_Encoder_CreateChn(stream_settings->channel, &channel_attr);
+  ret = IMP_Encoder_CreateChn(encoder_setting->channel, &channel_attr);
   if (ret < 0) {
     log_error("IMP_Encoder_CreateChn error for stream %s, channel %d",
-      stream_settings->name, stream_settings->channel);      
+      stream_settings->name, encoder_setting->channel);      
     return -1;
   }
 
   log_info("IMP_Encoder_CreateChn success for stream %s, channel %d",
-    stream_settings->name, stream_settings->channel);
+    stream_settings->name, encoder_setting->channel);
 
-  ret = IMP_Encoder_RegisterChn(stream_settings->group, stream_settings->channel);
+  ret = IMP_Encoder_RegisterChn(stream_settings->group, encoder_setting->channel);
   if (ret < 0) {
     log_error("IMP_Encoder_RegisterChn error.");
     return -1;
@@ -356,44 +395,20 @@ void print_stream_settings(StreamSettings *stream_settings)
   char buffer[1024];  
   snprintf(buffer, sizeof(buffer), "Stream settings: \n"
                    "name: %s\n"
-                   "v4l2_device_path: %s\n"
-                   "payload_type: %s\n"
-                   "buffer_size: %d\n"
-                   "profile: %d\n"
+                   "enabled: %d\n"
                    "pic_width: %d\n"
                    "pic_height: %d\n"
-                   "mode: %s\n"
-                   "frame_rate_numerator: %d\n"
-                   "frame_rate_denominator: %d\n"
-                   "max_group_of_pictures: %d\n"
-                   "max_qp: %d\n"
-                   "min_qp: %d\n"
                    "statistics_interval: %d\n"
                    "max_bitrate: %d\n"
                    "change_pos: %d\n"
-                   "frame_qp_step: %d\n"
-                   "gop_qp_step: %d\n"
-                   "channel: %d\n"
                    "group: %d\n",
                     stream_settings->name,
-                    stream_settings->v4l2_device_path,
-                    stream_settings->payload_type,
-                    stream_settings->buffer_size,
-                    stream_settings->profile,
+                    stream_settings->enabled,
                     stream_settings->pic_width,
                     stream_settings->pic_height,
-                    stream_settings->mode,
-                    stream_settings->frame_rate_numerator,
-                    stream_settings->frame_rate_denominator,
-                    stream_settings->max_group_of_pictures,
-                    stream_settings->max_qp,
-                    stream_settings->min_qp,
                     stream_settings->statistics_interval,
                     stream_settings->max_bitrate,
                     stream_settings->change_pos,
-                    stream_settings->frame_qp_step,
-                    stream_settings->gop_qp_step,
-                    stream_settings->channel,
                     stream_settings->group
                     );
   log_info("%s", buffer);
@@ -402,25 +417,32 @@ void print_stream_settings(StreamSettings *stream_settings)
 
 void *produce_frames(void *ptr)
 {
+  // This is the entrypoint for the threads
   // ptr is a pointer to StreamSettings
   StreamSettings *stream_settings = ptr;
+  int i;
+
   print_stream_settings(stream_settings);
+
+  create_encoding_group(stream_settings);
 
   setup_framesource(stream_settings);
 
-  setup_encoding_engine(stream_settings);
 
-  output_v4l2_frames(stream_settings);
+  for (i = 0; i < stream_settings->num_encoders; ++i) {
+    setup_encoding_engine(stream_settings, &stream_settings->encoders[i]);
+    output_v4l2_frames(stream_settings, &stream_settings->encoders[i]);
+  }
 
 }
 
-int output_v4l2_frames(StreamSettings *stream_settings)
+int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_setting)
 {
   int ret;
   int stream_packets;
   int i;
   int total;
-  char *v4l2_device_path = stream_settings->v4l2_device_path;
+  char *v4l2_device_path = encoder_setting->v4l2_device_path;
   int video_width = stream_settings->pic_width;
   int video_height = stream_settings->pic_height;
 
@@ -461,9 +483,9 @@ int output_v4l2_frames(StreamSettings *stream_settings)
     return -1;
   }
 
-  ret = IMP_FrameSource_EnableChn(stream_settings->channel);
+  ret = IMP_FrameSource_EnableChn(encoder_setting->channel);
   if (ret < 0) {
-    log_error("IMP_FrameSource_EnableChn(%d) error: %d", stream_settings->channel, ret);
+    log_error("IMP_FrameSource_EnableChn(%d) error: %d", encoder_setting->channel, ret);
     return -1;
   }
 
@@ -485,14 +507,14 @@ int output_v4l2_frames(StreamSettings *stream_settings)
     vid_format.fmt.pix.width = video_width;
     vid_format.fmt.pix.height = video_height;
 
-  if (strcmp(stream_settings->payload_type, "PT_H264") == 0) {
+  if (strcmp(encoder_setting->payload_type, "PT_H264") == 0) {
     vid_format.fmt.pix.pixelformat = V4L2_PIX_FMT_H264;
     vid_format.fmt.pix.sizeimage = 0;
     vid_format.fmt.pix.field = V4L2_FIELD_NONE;
     vid_format.fmt.pix.bytesperline = 0;
     vid_format.fmt.pix.colorspace = V4L2_PIX_FMT_YUV420;
   }
-  else if(strcmp(stream_settings->payload_type, "PT_JPEG") == 0) {
+  else if(strcmp(encoder_setting->payload_type, "PT_JPEG") == 0) {
     vid_format.fmt.pix.pixelformat = V4L2_PIX_FMT_YUV420;
     vid_format.fmt.pix.sizeimage = 0;
     vid_format.fmt.pix.field = V4L2_FIELD_NONE;
@@ -500,7 +522,7 @@ int output_v4l2_frames(StreamSettings *stream_settings)
     vid_format.fmt.pix.colorspace = V4L2_COLORSPACE_JPEG;
   }
   else {
-    log_error("Unknown payload type: %s", stream_settings->payload_type);
+    log_error("Unknown payload type: %s", encoder_setting->payload_type);
     return -1;
   }
 
@@ -525,9 +547,9 @@ int output_v4l2_frames(StreamSettings *stream_settings)
 
 
 
-  ret = IMP_Encoder_StartRecvPic(stream_settings->channel);
+  ret = IMP_Encoder_StartRecvPic(encoder_setting->channel);
   if (ret < 0) {
-    log_error("IMP_Encoder_StartRecvPic(%d) failed.", stream_settings->channel);
+    log_error("IMP_Encoder_StartRecvPic(%d) failed.", encoder_setting->channel);
     return -1;
   }
 
@@ -565,9 +587,6 @@ int output_v4l2_frames(StreamSettings *stream_settings)
       return -1;
     }
 
-    log_debug("Obtained %d 16-bit samples from audio frame", num_samples);
-
-
     if (ret = snd_pcm_writei(pcm_handle, pcm_audio_data, num_samples) == -EPIPE) {
       // log_error("Buffer overrun when writing to ALSA loopback device");
       snd_pcm_prepare(pcm_handle);
@@ -593,18 +612,20 @@ int output_v4l2_frames(StreamSettings *stream_settings)
 
       current_fps = 200 / elapsed_seconds;
       log_info("Current FPS: %.2f", current_fps);
+      log_info("Obtained %d 16-bit samples from this specific audio frame", num_samples);
+
       frames_written = 0;
       gettimeofday(&tval_before, NULL);
     }
 
-    ret = IMP_Encoder_PollingStream(stream_settings->channel, 1000);
+    ret = IMP_Encoder_PollingStream(encoder_setting->channel, 1000);
     if (ret < 0) {
       log_error("Timeout while polling for stream.");
       continue;
     }
 
     // Get H264 Stream on channel 0 and enable a blocking call
-    ret = IMP_Encoder_GetStream(stream_settings->channel, &stream, 1);
+    ret = IMP_Encoder_GetStream(encoder_setting->channel, &stream, 1);
     if (ret < 0) {
       log_error("IMP_Encoder_GetStream() failed");
       return -1;
@@ -663,15 +684,15 @@ int output_v4l2_frames(StreamSettings *stream_settings)
 
     free(stream_chunk);
 
-    IMP_Encoder_ReleaseStream(stream_settings->channel, &stream);
+    IMP_Encoder_ReleaseStream(encoder_setting->channel, &stream);
 
     frames_written = frames_written + 1;
   }
 
 
-  ret = IMP_Encoder_StopRecvPic(stream_settings->channel);
+  ret = IMP_Encoder_StopRecvPic(encoder_setting->channel);
   if (ret < 0) {
-    log_error("IMP_Encoder_StopRecvPic(%d) failed", stream_settings->channel);
+    log_error("IMP_Encoder_StopRecvPic(%d) failed", encoder_setting->channel);
     return -1;
   }
 
