@@ -8,8 +8,10 @@ IMP - Ingenic Multimedia Platform
 */
 
 extern sig_atomic_t sigint_received;
-
 extern snd_pcm_t *pcm_handle;
+extern pthread_mutex_t frame_generator_mutex; 
+
+int FrameSourceInitialized[5] = {0,0,0,0,0};
 
 int initialize_sensor(IMPSensorInfo *sensor_info)
 {
@@ -505,16 +507,25 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
   }
 
 
-  if (encoder_setting->channel == 0)
-  {
+
+
+  // You can only initialize the FrameSource for the group once.
+  // To ensure this only happens once we use a mutex so only one
+  // of the threads initializes the FrameSource
+  pthread_mutex_lock(&frame_generator_mutex); 
+
+  // If this group's framesource has not been initialized yet
+  if( FrameSourceInitialized[stream_settings->group] == 0 ) {
     log_info("Enabling FrameSource channel %d", stream_settings->group);
     ret = IMP_FrameSource_EnableChn(stream_settings->group);
     if (ret < 0) {
-      // Possibly that the other thread got to it first
-      log_warn("IMP_FrameSource_EnableChn(%d) error: %d", stream_settings->group, ret);
-      // return -1;
-    }   
+      log_error("IMP_FrameSource_EnableChn(%d) error: %d", stream_settings->group, ret);
+    } else {
+      FrameSourceInitialized[stream_settings->group] = 1;      
+    }
   }
+  pthread_mutex_unlock(&frame_generator_mutex); 
+
 
 
   log_info("Opening V4L2 device: %s ", v4l2_device_path);

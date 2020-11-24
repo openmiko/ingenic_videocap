@@ -5,6 +5,7 @@
 volatile sig_atomic_t sigint_received = 0; 
 
 pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t frame_generator_mutex; 
 
 snd_pcm_t *pcm_handle;
 
@@ -93,7 +94,6 @@ void start_frame_producer_threads(StreamSettings stream_settings[], int num_stre
       return -1;
     }
     log_info("Frame source setup complete for channel %d", i);
-
 
 
 
@@ -260,6 +260,12 @@ int main(int argc, const char *argv[])
   initialize_audio();
 
 
+  if (pthread_mutex_init(&frame_generator_mutex, NULL) != 0) { 
+    log_error("Failed to initialize frame_generator_mutex.");
+    return -1;
+  } 
+
+
   // This will suspend the main thread until the streams quit
   start_frame_producer_threads(stream_settings, num_stream_settings);
 
@@ -273,6 +279,7 @@ err:
 
   free(file_contents);
   cJSON_Delete(json);
+  pthread_mutex_destroy(&frame_generator_mutex); 
 
 
   return 0;
