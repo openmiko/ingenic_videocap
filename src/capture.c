@@ -228,6 +228,7 @@ int create_encoding_group(StreamSettings* stream_settings)
 {
   int ret;
 
+
   ret = IMP_Encoder_CreateGroup(stream_settings->group);
   if (ret < 0) {
     log_error("IMP_Encoder_CreateGroup error.");
@@ -238,7 +239,7 @@ int create_encoding_group(StreamSettings* stream_settings)
 }
 
 
-int setup_framesource(StreamSettings* stream_settings)
+int setup_framesource(StreamSettings* stream_settings, EncoderSetting *encoder_setting)
 {
   int ret;
 
@@ -255,53 +256,30 @@ int setup_framesource(StreamSettings* stream_settings)
     .crop.width = stream_settings->pic_width,
     .crop.height = stream_settings->pic_height,
 
-    .scaler.enable = 1,
+    .scaler.enable = 0,
     .scaler.outwidth = stream_settings->pic_width,
     .scaler.outheight = stream_settings->pic_height,
     .picWidth = stream_settings->pic_width,
     .picHeight = stream_settings->pic_height
   };
 
-  log_info("Setting up frame source for stream: %s", stream_settings->name);
+  log_info("Setting up frame source for channel %d", encoder_setting->channel);
 
 
-  ret = IMP_FrameSource_CreateChn(0, &fs_chn_attr);
+  ret = IMP_FrameSource_CreateChn(encoder_setting->channel, &fs_chn_attr);
   if(ret < 0){
-    log_error("IMP_FrameSource_CreateChn error.");
+    log_error("IMP_FrameSource_CreateChn error for channel %d.", encoder_setting->channel);
     return -1;
   }
+  log_info("Created frame source channel %d", encoder_setting->channel);
 
-  ret = IMP_FrameSource_SetChnAttr(0, &fs_chn_attr);
+  ret = IMP_FrameSource_SetChnAttr(encoder_setting->channel, &fs_chn_attr);
   if (ret < 0) {
-    log_error("IMP_FrameSource_SetChnAttr error.");
+    log_error("IMP_FrameSource_SetChnAttr error for channel %d.", encoder_setting->channel);
     return -1;
   }
 
-  ret = IMP_FrameSource_CreateChn(1, &fs_chn_attr);
-  if(ret < 0){
-    log_error("IMP_FrameSource_CreateChn error.");
-    return -1;
-  }
-
-  ret = IMP_FrameSource_SetChnAttr(1, &fs_chn_attr);
-  if (ret < 0) {
-    log_error("IMP_FrameSource_SetChnAttr error.");
-    return -1;
-  }
-
-  // ret = IMP_FrameSource_CreateChn(stream_settings->channel, &fs_chn_attr);
-  // if(ret < 0){
-  //   log_error("IMP_FrameSource_CreateChn error.");
-  //   return -1;
-  // }
-
-  // ret = IMP_FrameSource_SetChnAttr(stream_settings->channel, &fs_chn_attr);
-  // if (ret < 0) {
-  //   log_error("IMP_FrameSource_SetChnAttr error.");
-  //   return -1;
-  // }
-
-  log_info("Frame source setup complete: %s", stream_settings->name);
+  log_info("Frame source setup complete for channel %d", encoder_setting->channel);
 
   return 0;
 }
@@ -372,22 +350,39 @@ int setup_encoding_engine(StreamSettings* stream_settings, EncoderSetting *encod
 
   ret = IMP_Encoder_CreateChn(encoder_setting->channel, &channel_attr);
   if (ret < 0) {
-    log_error("IMP_Encoder_CreateChn error for stream %s, channel %d",
-      stream_settings->name, encoder_setting->channel);      
+    log_error("Error creating encoder channel %d", encoder_setting->channel);      
     return -1;
   }
 
-  log_info("IMP_Encoder_CreateChn success for stream %s, channel %d",
-    stream_settings->name, encoder_setting->channel);
+  log_info("Created encoder channel %d", encoder_setting->channel);
 
   ret = IMP_Encoder_RegisterChn(stream_settings->group, encoder_setting->channel);
   if (ret < 0) {
     log_error("IMP_Encoder_RegisterChn error.");
     return -1;
   }
+  log_info("Registered channel %d to group %d.", encoder_setting->channel, stream_settings->group);
 
   return 0;
 
+}
+
+void print_channel_attributes(IMPFSChnAttr *attr)
+{
+  char buffer[1024];  
+  snprintf(buffer, sizeof(buffer), "IMPFSChnAttr: \n"
+                   "picWidth: %d\n"
+                   "picHeight: %d\n"
+                   "outFrmRateNum: %d\n"
+                   "outFrmRateDen: %d\n"
+                   "nrVBs: %d\n",
+                    attr->picWidth,
+                    attr->picHeight,
+                    attr->outFrmRateNum,
+                    attr->outFrmRateDen,
+                    attr->nrVBs
+                    );
+  log_info("%s", buffer);
 }
 
 void print_stream_settings(StreamSettings *stream_settings)
@@ -415,24 +410,37 @@ void print_stream_settings(StreamSettings *stream_settings)
 }
 
 
-void *produce_frames(void *ptr)
+// This is the entrypoint for the threads
+void *produce_frames(void *encoder_thread_params_ptr)
 {
-  // This is the entrypoint for the threads
-  // ptr is a pointer to StreamSettings
-  StreamSettings *stream_settings = ptr;
-  int i;
+  int ret, i;
+  EncoderThreadParams *encoder_thread_params = encoder_thread_params_ptr;
+
+  StreamSettings *stream_settings = encoder_thread_params->stream_settings;
+  EncoderSetting *encoder_setting = encoder_thread_params->encoder_setting;
+
+  log_info("Starting thread for channel %d", encoder_setting->channel);
+
 
   print_stream_settings(stream_settings);
 
   create_encoding_group(stream_settings);
 
-  setup_framesource(stream_settings);
 
 
-  for (i = 0; i < stream_settings->num_encoders; ++i) {
-    setup_encoding_engine(stream_settings, &stream_settings->encoders[i]);
-    output_v4l2_frames(stream_settings, &stream_settings->encoders[i]);
-  }
+
+
+  //setup_framesource(stream_settings, encoder_setting);
+
+
+
+
+
+
+  setup_encoding_engine(stream_settings, encoder_setting);
+  output_v4l2_frames(stream_settings, encoder_setting);
+
+
 
 }
 
@@ -452,7 +460,7 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
   struct timeval tval_before, tval_after, tval_result;
 
 
-  IMPCell framesource_chn = { DEV_ID_FS, stream_settings->group, 0};
+  IMPCell framesource_chn = { DEV_ID_FS, stream_settings->group, encoder_setting->channel};
   IMPCell imp_encoder = { DEV_ID_ENC, stream_settings->group, 0};
 
   struct v4l2_capability vid_caps;
@@ -476,6 +484,19 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
   uint8_t* buf;
   int len;
 
+  IMPFSChnAttr framesrc_channel_attr; 
+
+  log_info("Framesource Channel: %d, %d, %d", framesource_chn.deviceID, framesource_chn.groupID, framesource_chn.outputID);
+  log_info("Encoder: %d, %d, %d", imp_encoder.deviceID, imp_encoder.groupID, imp_encoder.outputID);
+
+
+  ret = IMP_FrameSource_GetChnAttr(stream_settings->group, &framesrc_channel_attr);
+  if (ret < 0) {
+    log_error("Error retrieving frame source channel attributes for channel %d", stream_settings->group);
+    return -1;
+  }
+  print_channel_attributes(&framesrc_channel_attr);
+
 
   ret = IMP_System_Bind(&framesource_chn, &imp_encoder);
   if (ret < 0) {
@@ -483,10 +504,16 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
     return -1;
   }
 
-  ret = IMP_FrameSource_EnableChn(encoder_setting->channel);
-  if (ret < 0) {
-    log_error("IMP_FrameSource_EnableChn(%d) error: %d", encoder_setting->channel, ret);
-    return -1;
+
+  if (encoder_setting->channel == 0)
+  {
+    log_info("Enabling FrameSource channel %d", stream_settings->group);
+    ret = IMP_FrameSource_EnableChn(stream_settings->group);
+    if (ret < 0) {
+      // Possibly that the other thread got to it first
+      log_warn("IMP_FrameSource_EnableChn(%d) error: %d", stream_settings->group, ret);
+      // return -1;
+    }   
   }
 
 
@@ -503,9 +530,9 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
 
 
   memset(&vid_format, 0, sizeof(vid_format));
-    vid_format.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
-    vid_format.fmt.pix.width = video_width;
-    vid_format.fmt.pix.height = video_height;
+  vid_format.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+  vid_format.fmt.pix.width = video_width;
+  vid_format.fmt.pix.height = video_height;
 
   if (strcmp(encoder_setting->payload_type, "PT_H264") == 0) {
     vid_format.fmt.pix.pixelformat = V4L2_PIX_FMT_H264;
@@ -562,37 +589,37 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
 
     // Audio Frames
 
-    int ret = IMP_AI_PollingFrame(audio_device_id, audio_channel_id, 1000);
-    if (ret < 0) {
-      log_error("Error polling for audio frame");
-      return -1;
-    }
+    // int ret = IMP_AI_PollingFrame(audio_device_id, audio_channel_id, 1000);
+    // if (ret < 0) {
+    //   log_error("Error polling for audio frame");
+    //   return -1;
+    // }
 
-    ret = IMP_AI_GetFrame(audio_device_id, audio_channel_id, &audio_frame, BLOCK);
-    if (ret < 0) {
-      log_error("Error getting audio frame data");
-      return -1;
-    }
+    // ret = IMP_AI_GetFrame(audio_device_id, audio_channel_id, &audio_frame, BLOCK);
+    // if (ret < 0) {
+    //   log_error("Error getting audio frame data");
+    //   return -1;
+    // }
 
-    num_samples = audio_frame.len / sizeof(short);
-
-
-
-    memcpy(pcm_audio_data, (void *)audio_frame.virAddr, audio_frame.len);
+    // num_samples = audio_frame.len / sizeof(short);
 
 
-    ret = IMP_AI_ReleaseFrame(audio_device_id, audio_channel_id, &audio_frame);
-    if(ret != 0) {
-      log_error("Error releasing audio frame");
-      return -1;
-    }
 
-    if (ret = snd_pcm_writei(pcm_handle, pcm_audio_data, num_samples) == -EPIPE) {
-      // log_error("Buffer overrun when writing to ALSA loopback device");
-      snd_pcm_prepare(pcm_handle);
-    } else if (ret < 0) {
-      log_error("ERROR. Can't write to PCM device. %s\n", snd_strerror(ret));
-    }
+    // memcpy(pcm_audio_data, (void *)audio_frame.virAddr, audio_frame.len);
+
+
+    // ret = IMP_AI_ReleaseFrame(audio_device_id, audio_channel_id, &audio_frame);
+    // if(ret != 0) {
+    //   log_error("Error releasing audio frame");
+    //   return -1;
+    // }
+
+    // if (ret = snd_pcm_writei(pcm_handle, pcm_audio_data, num_samples) == -EPIPE) {
+    //   // log_error("Buffer overrun when writing to ALSA loopback device");
+    //   snd_pcm_prepare(pcm_handle);
+    // } else if (ret < 0) {
+    //   log_error("ERROR. Can't write to PCM device. %s\n", snd_strerror(ret));
+    // }
 
 
 

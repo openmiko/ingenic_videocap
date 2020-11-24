@@ -43,4 +43,10 @@ typedef struct stream_settings {
 } StreamSettings;
 
 
+// Used to pass data to the encoding threads 
+typedef struct encoder_thread_params {
+	StreamSettings *stream_settings;
+	EncoderSetting *encoder_setting;
+} EncoderThreadParams;
+
 #endif /* STREAMSETTINGS_H */

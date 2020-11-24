@@ -218,7 +218,7 @@ int main()
 {
         int fd;
 
-        fd = open("/dev/video3", O_RDWR);
+        fd = open("/dev/video4", O_RDWR);
         if (fd == -1)
         {
                 perror("Opening video device");
