@@ -24,17 +24,20 @@ include_directories(${CMAKE_FIND_ROOT_PATH}/usr/include/h264bitstream)
 
 
 
-# The videocapture source files are all the *.c files minus the autonight one
+# The videocapture source files are all the *.c files minus the autonight and getimage
 file(GLOB VIDEOCAPTURE_SRC_FILES "src/*.c")
 list(REMOVE_ITEM VIDEOCAPTURE_SRC_FILES "${CMAKE_SOURCE_DIR}/src/autonight.c")
+list(REMOVE_ITEM VIDEOCAPTURE_SRC_FILES "${CMAKE_SOURCE_DIR}/src/getimage.c")
 
 
 # autonight binary source
 set(AUTONIGHT_SRC_FILES "src/autonight.c")
+set(GETIMAGE_SRC_FILES "src/getimage.c")
 
 
 message(STATUS "Source files for videocapture binary: ${VIDEOCAPTURE_SRC_FILES}")
 message(STATUS "Source files for autonight binary: ${AUTONIGHT_SRC_FILES}")
+message(STATUS "Source files for getimage binary: ${GETIMAGE_SRC_FILES}")
 
 
 ######################
@@ -43,7 +46,7 @@ message(STATUS "Source files for autonight binary: ${AUTONIGHT_SRC_FILES}")
 
 add_executable(videocapture ${VIDEOCAPTURE_SRC_FILES})
 add_executable(autonight ${AUTONIGHT_SRC_FILES})
-
+add_executable(getimage ${GETIMAGE_SRC_FILES})
 
 
 #########################
@@ -74,7 +77,8 @@ target_link_libraries(videocapture ${CMAKE_SOURCE_DIR}/lib/libalog.so )
 
 target_link_libraries(videocapture ${CMAKE_FIND_ROOT_PATH}/usr/lib/libh264bitstream.so )
 
-
+# Link libraries used by getimage
+target_link_libraries(getimage ${CMAKE_FIND_ROOT_PATH}/usr/lib/libh264bitstream.so )
 
 
 message(STATUS "CMAKE_THREAD_LIBS_INIT: ${CMAKE_THREAD_LIBS_INIT}")
@@ -84,3 +88,4 @@ set_property(TARGET videocapture PROPERTY C_STANDARD 99)
 
 install(TARGETS videocapture DESTINATION bin)
 install(TARGETS autonight DESTINATION bin)
+install(TARGETS getimage DESTINATION bin)
