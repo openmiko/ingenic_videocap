@@ -7,233 +7,273 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <unistd.h>
-#include <h264_stream.h>
+#include <getopt.h>
+#include <stdlib.h>
+#include "log.h"
 
 uint8_t *buffer;
 
 static int xioctl(int fd, int request, void *arg)
 {
-        int r;
+  int r;
 
-        do r = ioctl (fd, request, arg);
-        while (-1 == r && EINTR == errno);
+  do r = ioctl (fd, request, arg);
+  while (-1 == r && EINTR == errno);
 
-        return r;
+  return r;
 }
 
 int print_caps(int fd)
 {
-        struct v4l2_capability caps = {};
-        if (-1 == xioctl(fd, VIDIOC_QUERYCAP, &caps))
-        {
-                perror("Querying Capabilities");
-                return 1;
-        }
+  struct v4l2_capability caps = {};
+  if (-1 == xioctl(fd, VIDIOC_QUERYCAP, &caps))
+  {
+      perror("Querying Capabilities");
+      return 1;
+  }
 
-        printf( "Driver Caps:\n"
-                "  Driver: \"%s\"\n"
-                "  Card: \"%s\"\n"
-                "  Bus: \"%s\"\n"
-                "  Version: %d.%d\n"
-                "  Capabilities: %08x\n",
-                caps.driver,
-                caps.card,
-                caps.bus_info,
-                (caps.version>>16)&&0xff,
-                (caps.version>>24)&&0xff,
-                caps.capabilities);
+  log_info( "Driver Caps:\n"
+      "  Driver: \"%s\"\n"
+      "  Card: \"%s\"\n"
+      "  Bus: \"%s\"\n"
+      "  Version: %d.%d\n"
+      "  Capabilities: %08x\n",
+      caps.driver,
+      caps.card,
+      caps.bus_info,
+      (caps.version>>16)&&0xff,
+      (caps.version>>24)&&0xff,
+      caps.capabilities);
 
 
-        /*struct v4l2_cropcap cropcap = {0};
-        cropcap.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        if (-1 == xioctl (fd, VIDIOC_CROPCAP, &cropcap))
-        {
-                perror("Querying Cropping Capabilities");
-                return 1;
-        }
+  char fourcc[5] = {0};
 
-        printf( "Camera Cropping:\n"
-                "  Bounds: %dx%d+%d+%d\n"
-                "  Default: %dx%d+%d+%d\n"
-                "  Aspect: %d/%d\n",
-                cropcap.bounds.width, cropcap.bounds.height, cropcap.bounds.left, cropcap.bounds.top,
-                cropcap.defrect.width, cropcap.defrect.height, cropcap.defrect.left, cropcap.defrect.top,
-                cropcap.pixelaspect.numerator, cropcap.pixelaspect.denominator);
+  struct v4l2_format fmt = {0};
+  fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+  fmt.fmt.pix.width = 1920;
+  fmt.fmt.pix.height = 1080;
+  
+  fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUV420;
+  fmt.fmt.pix.field = V4L2_FIELD_NONE;
+  fmt.fmt.pix.colorspace = V4L2_COLORSPACE_JPEG;
 
-        int support_grbg10 = 0;
+  if (-1 == xioctl(fd, VIDIOC_S_FMT, &fmt))
+  {
+    perror("Setting Pixel Format");
+    return 1;
+  }
 
-        struct v4l2_fmtdesc fmtdesc = {0};
-        fmtdesc.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;*/
-        char fourcc[5] = {0};
-        /*char c, e;
-        printf("  FMT : CE Desc\n--------------------\n");
-        while (0 == xioctl(fd, VIDIOC_ENUM_FMT, &fmtdesc))
-        {
-                strncpy(fourcc, (char *)&fmtdesc.pixelformat, 4);
-                if (fmtdesc.pixelformat == V4L2_PIX_FMT_SGRBG10)
-                    support_grbg10 = 1;
-                c = fmtdesc.flags & 1? 'C' : ' ';
-                e = fmtdesc.flags & 2? 'E' : ' ';
-                printf("  %s: %c%c %s\n", fourcc, c, e, fmtdesc.description);
-                fmtdesc.index++;
-        }
-
-        if (!support_grbg10)
-        {
-            printf("Doesn't support GRBG10.\n");
-            return 1;
-        }*/
-
-        struct v4l2_format fmt = {0};
-        fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        fmt.fmt.pix.width = 1920;
-        fmt.fmt.pix.height = 1080;
-        
-        fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUV420;
-        fmt.fmt.pix.field = V4L2_FIELD_NONE;
-		fmt.fmt.pix.colorspace = V4L2_COLORSPACE_JPEG;
-
-        if (-1 == xioctl(fd, VIDIOC_S_FMT, &fmt))
-        {
-            perror("Setting Pixel Format");
-            return 1;
-        }
-
-        strncpy(fourcc, (char *)&fmt.fmt.pix.pixelformat, 4);
-        printf( "Selected Camera Mode:\n"
-                "  Width: %d\n"
-                "  Height: %d\n"
-                "  PixFmt: %s\n"
-                "  Field: %d\n",
-                fmt.fmt.pix.width,
-                fmt.fmt.pix.height,
-                fourcc,
-                fmt.fmt.pix.field);
-        return 0;
+  strncpy(fourcc, (char *)&fmt.fmt.pix.pixelformat, 4);
+  log_info( "Selected Camera Mode:\n"
+      "  Width: %d\n"
+      "  Height: %d\n"
+      "  PixFmt: %s\n"
+      "  Field: %d\n",
+      fmt.fmt.pix.width,
+      fmt.fmt.pix.height,
+      fourcc,
+      fmt.fmt.pix.field);
+  return 0;
 }
 
 int init_mmap(int fd)
 {
-    struct v4l2_requestbuffers req = {0};
-    req.count = 1;
-    req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    req.memory = V4L2_MEMORY_MMAP;
+  struct v4l2_requestbuffers req = {0};
+  req.count = 1;
+  req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+  req.memory = V4L2_MEMORY_MMAP;
 
-    if (-1 == xioctl(fd, VIDIOC_REQBUFS, &req))
-    {
-        perror("Requesting Buffer");
-        return 1;
-    }
+  if (-1 == xioctl(fd, VIDIOC_REQBUFS, &req))
+  {
+    perror("Requesting Buffer");
+    return 1;
+  }
 
-    struct v4l2_buffer buf = {0};
-    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf.memory = V4L2_MEMORY_MMAP;
-    buf.index = 0;
-    if(-1 == xioctl(fd, VIDIOC_QUERYBUF, &buf))
-    {
-        perror("Querying Buffer");
-        return 1;
-    }
+  struct v4l2_buffer buf = {0};
+  buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+  buf.memory = V4L2_MEMORY_MMAP;
+  buf.index = 0;
+  if(-1 == xioctl(fd, VIDIOC_QUERYBUF, &buf))
+  {
+    perror("Querying Buffer");
+    return 1;
+  }
 
-    buffer = mmap (NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, buf.m.offset);
-    printf("Length: %d\nAddress: %p\n", buf.length, buffer);
-    printf("Image Length: %d\n", buf.bytesused);
+  buffer = mmap (NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, buf.m.offset);
+  log_info("Length: %d\nAddress: %p\n", buf.length, buffer);
+  log_info("Image Length: %d\n", buf.bytesused);
 
-    return 0;
+  return 0;
 }
 
-int capture_image(int fd)
+int capture_image(int fd, char *output_mode)
 {
 
-    int ret;
+  int ret;
 
-    struct v4l2_buffer buf = {0};
-    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf.memory = V4L2_MEMORY_MMAP;
-    buf.index = 0;
-
-
-    if(-1 == xioctl(fd, VIDIOC_QBUF, &buf))
-    {
-        printf("Query Buffer");
-        return 1;
-    }
-
-    if(-1 == xioctl(fd, VIDIOC_STREAMON, &buf.type))
-    {
-        printf("Start Capture");
-        return 1;
-    }
-
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(fd, &fds);
-    struct timeval tv = {0};
-    tv.tv_sec = 2;
-    int r = select(fd+1, &fds, NULL, NULL, &tv);
-    if(-1 == r)
-    {
-        printf("Waiting for Frame");
-        return 1;
-    }
-
-    if(-1 == xioctl(fd, VIDIOC_DQBUF, &buf))
-    {
-        printf("Retrieving Frame");
-        return 1;
-    }
+  struct v4l2_buffer buf = {0};
+  buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+  buf.memory = V4L2_MEMORY_MMAP;
+  buf.index = 0;
 
 
-    // When retrieving the frame it will return the full number of bytes
-    // even though it is a JPEG image. So look for the end of the JPEG marker
-    // and only write out those bytes
+  if(-1 == xioctl(fd, VIDIOC_QBUF, &buf))
+  {
+    log_info("Query Buffer");
+    return 1;
+  }
+
+  if(-1 == xioctl(fd, VIDIOC_STREAMON, &buf.type))
+  {
+    log_info("Start Capture");
+    return 1;
+  }
+
+  fd_set fds;
+  FD_ZERO(&fds);
+  FD_SET(fd, &fds);
+  struct timeval tv = {0};
+  tv.tv_sec = 2;
+  int r = select(fd+1, &fds, NULL, NULL, &tv);
+  if(-1 == r)
+  {
+    log_info("Waiting for Frame");
+    return 1;
+  }
+
+  if(-1 == xioctl(fd, VIDIOC_DQBUF, &buf))
+  {
+    log_info("Retrieving Frame");
+    return 1;
+  }
 
 
-	FILE * fp;
-	fp = fopen("/tmp/out.jpg", "wb");
+  // When retrieving the frame it will return the full number of bytes
+  // even though it is a JPEG image. So look for the end of the JPEG marker
+  // and only write out those bytes
 
-    char eof_jpeg_marker[2] = {0xff, 0xd9};
 
-    char *last_needle = NULL;
+  FILE * fp;
+  fp = fopen("/tmp/out.jpg", "wb");
 
-    char *eof = (char *)memmem(buffer, buf.bytesused, eof_jpeg_marker, 2);
+  char eof_jpeg_marker[2] = {0xff, 0xd9};
 
-    if(eof == NULL) {
-        printf("Error: Unable to find end of JPEG marker in retrieved frame.\n");
-        return 1;
-    }
+  char *last_needle = NULL;
 
-    int jpeg_bytes = eof - (char *)buffer;
-    printf("Calculated size of JPEG as %d\n", jpeg_bytes);
-	fwrite((void *)buffer, jpeg_bytes+2, 1, fp);
-	fclose(fp);
+  char *eof = (char *)memmem(buffer, buf.bytesused, eof_jpeg_marker, 2);
 
-	
-	printf("Image saved to: /tmp/out.jpg");
+  if(eof == NULL) {
+    log_error("Error: Unable to find end of JPEG marker in retrieved frame.");
+    return 1;
+  }
 
-    return 0;
+  int jpeg_bytes = eof - (char *)buffer;
+  log_info("Calculated size of JPEG as %d\n", jpeg_bytes);
+  fwrite((void *)buffer, jpeg_bytes+2, 1, fp);
+  fclose(fp);
+
+  
+  log_info("Image saved to: /tmp/out.jpg");
+
+
+  char content_type_mixed_replace[] = "Content-type: multipart/x-mixed-replace;boundary=--boundarydonotcross\r\n";
+  char boundary[] = "--boundarydonotcross\r\n";
+  char content_type_image_jpg[] = "Content-type: image/jpeg\r\n";
+  char content_length_header[255];
+
+
+  if (output_mode != NULL && strcmp(output_mode, "mjpeghttp") == 0) {
+    fwrite(content_type_mixed_replace, strlen(content_type_mixed_replace), 1, stdout);
+    fwrite(boundary, strlen(boundary), 1, stdout);
+    fwrite(content_type_image_jpg, strlen(content_type_image_jpg), 1, stdout);
+    fwrite(content_length_header, strlen(content_length_header), 1, stdout);
+
+    sprintf(content_length_header, "Content-length: %d\r\n\r\n", jpeg_bytes+2);
+    fwrite(content_length_header, strlen(content_length_header), 1, stdout);
+
+    fwrite((void *)buffer, jpeg_bytes+2, 1, stdout);
+
+    fwrite("\r\n", 2, 1, stdout);
+    fwrite(boundary, strlen(boundary), 1, stdout);      
+  }
+
+  return 0;
 }
 
-int main()
+int main(int argc, char *argv[])
 {
-        int fd;
+  int fd;
+  int option_index = 0;
+  int verbosity_level = 3;
+  char *v4l2_device = NULL;
+  char *output_dest = NULL;
+  char *output_mode = NULL;
 
-        fd = open("/dev/video4", O_RDWR);
-        if (fd == -1)
-        {
-                perror("Opening video device");
-                return 1;
-        }
+  while (( option_index = getopt(argc, argv, "v:d:o:f:")) != -1) {
 
-        if(print_caps(fd))
-            return 1;
+    switch (option_index) {
+      case 'v':
+        verbosity_level = atoi(optarg);
+        break;
+      case 'd':
+        v4l2_device = optarg;
+        break;
+      case 'o':
+        output_dest = optarg;
+        break;
+      case 'f':
+        output_mode = optarg;
+        break;
+      default:
+        printf("Unknown option.\n");
+        return 1;
+    }
+  }
 
-        if(init_mmap(fd))
-            return 1;
 
-        if(capture_image(fd))
-            return 1;
+  // Configure logging
+  switch (verbosity_level) {
+    case 0:
+      log_set_level(LOG_FATAL);
+    case 1:
+      log_set_level(LOG_ERROR);
+      break;
+    case 2:
+      log_set_level(LOG_WARN);
+      break;
+    case 3:
+      log_set_level(LOG_INFO);
+      break;
+    case 4:
+      log_set_level(LOG_DEBUG);
+      break;
+    case 5:
+      log_set_level(LOG_TRACE);
+      break;
+    default:
+      log_set_level(LOG_INFO);
+  }  
 
-        close(fd);
-        return 0;
+  log_info("Opening v4l2_device: %s\n", v4l2_device);
+  fd = open(v4l2_device, O_RDWR);
+
+  if (fd < 0) {
+    perror("Opening video device");
+    return 1;
+  }
+
+  if(print_caps(fd)) {
+    return 1;
+  }
+
+  if(init_mmap(fd)) {
+    return 1;
+  }
+
+  if(capture_image(fd, output_mode)) {
+    return 1;
+  }
+
+  close(fd);
+  return 0;
 }

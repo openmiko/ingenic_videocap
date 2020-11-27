@@ -16,13 +16,39 @@ int FrameSourceInitialized[5] = {0,0,0,0,0};
 int initialize_sensor(IMPSensorInfo *sensor_info)
 {
   int ret;
-
+  char sensor_name_buffer[SENSOR_NAME_MAX_LENGTH];
+  char *sensor_name;
+  FILE *sensor_info_proc_file;
+  
   log_info("Initializing sensor");
 
+  // Read sensor from /proc filesystem
+  // The string will look like "sensor :jxf23\n" so need to parse it
+  sensor_info_proc_file = fopen("/proc/jz/sinfo/info","r");
+
+  if( fgets(sensor_name_buffer, SENSOR_NAME_MAX_LENGTH, sensor_info_proc_file) == NULL) {
+    log_error("Error getting sensor name from /proc/jz/sinfo/info");
+    return -1;
+  }
+
+  // Pointer to first occurance of the colon
+  sensor_name = strstr(sensor_name_buffer, ":");
+  if (sensor_name != NULL) {
+    sensor_name = sensor_name + 1;
+    // Assume the last character is a newline and remove it
+    sensor_name[strlen(sensor_name)-1] = '\0';
+  }
+  else {
+    log_error("Expecting sensor name read from /proc to have a colon.");
+    return -1;
+  }
+
+  log_info("Determined sensor name: %s", sensor_name);
+
   memset(sensor_info, 0, sizeof(IMPSensorInfo));
-	memcpy(sensor_info->name, SENSOR_NAME, sizeof(SENSOR_NAME));
+	memcpy(sensor_info->name, sensor_name, strlen(sensor_name)+1);
 	sensor_info->cbus_type = SENSOR_CUBS_TYPE;
-	memcpy(sensor_info->i2c.type, SENSOR_NAME, sizeof(SENSOR_NAME));
+	memcpy(sensor_info->i2c.type, sensor_name, strlen(sensor_name)+1);
   sensor_info->i2c.addr = SENSOR_I2C_ADDR;
 
   log_info("IMPSensorInfo details: ");
@@ -41,13 +67,12 @@ int initialize_sensor(IMPSensorInfo *sensor_info)
 
 	ret = IMP_ISP_AddSensor(sensor_info);
 	if(ret < 0){
-		log_error("Failed to register the %s sensor.", SENSOR_NAME);
+		log_error("Failed to register the %s sensor.", sensor_name);
 		return -1;
 	}
   else {
-    log_info("Added the %s sensor.", SENSOR_NAME);    
+    log_info("Added the %s sensor.", sensor_name);
   }
-
 
 	ret = IMP_ISP_EnableSensor();
 	if(ret < 0){
@@ -481,10 +506,11 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
   short pcm_audio_data[1024];
 
   // h264 NAL unit stuff
-  h264_stream_t *h = h264_new();
-  int nal_start, nal_end;
-  uint8_t* buf;
-  int len;
+
+  // h264_stream_t *h = h264_new();
+  // int nal_start, nal_end;
+  // uint8_t* buf;
+  // int len;
 
   IMPFSChnAttr framesrc_channel_attr; 
 
@@ -553,7 +579,7 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
     vid_format.fmt.pix.colorspace = V4L2_PIX_FMT_YUV420;
   }
   else if(strcmp(encoder_setting->payload_type, "PT_JPEG") == 0) {
-    vid_format.fmt.pix.pixelformat = V4L2_PIX_FMT_YUV420;
+    vid_format.fmt.pix.pixelformat = V4L2_PIX_FMT_JPEG;
     vid_format.fmt.pix.sizeimage = 0;
     vid_format.fmt.pix.field = V4L2_FIELD_NONE;
     vid_format.fmt.pix.bytesperline = 0;

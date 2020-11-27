@@ -84,14 +84,14 @@ void start_frame_producer_threads(StreamSettings stream_settings[], int num_stre
     ret = IMP_FrameSource_CreateChn(i, &fs_chn_attr);
     if(ret < 0){
       log_error("IMP_FrameSource_CreateChn error for channel %d.", i);
-      return -1;
+      return;
     }
     log_info("Created frame source channel %d", i);
 
     ret = IMP_FrameSource_SetChnAttr(i, &fs_chn_attr);
     if (ret < 0) {
       log_error("IMP_FrameSource_SetChnAttr error for channel %d.", i);
-      return -1;
+      return;
     }
     log_info("Frame source setup complete for channel %d", i);
 
@@ -143,12 +143,13 @@ void lock_callback(bool lock, void* udata) {
 // Parsing JSON file
 
 
+
 int main(int argc, const char *argv[])
 {
   int i, ret;
   char *r;
   IMPSensorInfo sensor_info;
-  
+
 
   // Variables related to parsing the JSON config file
   char filename[255];
@@ -178,6 +179,7 @@ int main(int argc, const char *argv[])
   // Configure logging
   log_set_level(LOG_INFO);
   log_set_lock(lock_callback, &log_mutex);
+
 
 
 

@@ -30,9 +30,11 @@ list(REMOVE_ITEM VIDEOCAPTURE_SRC_FILES "${CMAKE_SOURCE_DIR}/src/autonight.c")
 list(REMOVE_ITEM VIDEOCAPTURE_SRC_FILES "${CMAKE_SOURCE_DIR}/src/getimage.c")
 
 
-# autonight binary source
+# autonight source files
 set(AUTONIGHT_SRC_FILES "src/autonight.c")
-set(GETIMAGE_SRC_FILES "src/getimage.c")
+
+# getimage source files
+set(GETIMAGE_SRC_FILES "src/getimage.c" "src/log.c")
 
 
 message(STATUS "Source files for videocapture binary: ${VIDEOCAPTURE_SRC_FILES}")
@@ -84,6 +86,7 @@ target_link_libraries(getimage ${CMAKE_FIND_ROOT_PATH}/usr/lib/libh264bitstream.
 message(STATUS "CMAKE_THREAD_LIBS_INIT: ${CMAKE_THREAD_LIBS_INIT}")
 
 set_property(TARGET videocapture PROPERTY C_STANDARD 99)
+set_property(TARGET getimage PROPERTY C_STANDARD 99)
 
 
 install(TARGETS videocapture DESTINATION bin)
