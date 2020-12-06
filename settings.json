@@ -80,7 +80,7 @@
     },
     {
       "name": "secondary",
-      "enabled": false,
+      "enabled": true,
       "v4l2_device_path": "/dev/video5",
       "payload_type": "PT_H264",
       "buffer_size": 0,
