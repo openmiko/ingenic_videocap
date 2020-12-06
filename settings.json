@@ -17,6 +17,8 @@
       "scaling_enable": 1,
       "scaling_width": 1920,
       "scaling_height": 1080,
+      "frame_rate_numerator": 25,
+      "frame_rate_denominator": 1,
       "encoders": [{
         "channel": 0,
         "v4l2_device_path": "/dev/video3",
@@ -51,7 +53,7 @@
         "v4l2_device_path": "/dev/video4",        
         "payload_type": "PT_JPEG",
         "buffer_size": 0,
-        "profile": 2,
+        "profile": 0,
         "mode": "ENC_RC_MODE_H264VBR",
         "frame_rate_numerator": 25,
         "frame_rate_denominator": 1,
@@ -79,7 +81,7 @@
     {
       "name": "secondary",
       "enabled": false,
-      "v4l2_device_path": "/dev/video4",
+      "v4l2_device_path": "/dev/video5",
       "payload_type": "PT_H264",
       "buffer_size": 0,
       "profile": 0,

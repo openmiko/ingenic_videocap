@@ -266,50 +266,50 @@ int create_encoding_group(StreamSettings* stream_settings)
 }
 
 
-int setup_framesource(StreamSettings* stream_settings, EncoderSetting *encoder_setting)
-{
-  int ret;
+// int setup_framesource(StreamSettings* stream_settings, EncoderSetting *encoder_setting)
+// {
+//   int ret;
 
-  IMPFSChnAttr fs_chn_attr = {
-    .pixFmt = PIX_FMT_NV12,
-    .outFrmRateNum = 25,
-    .outFrmRateDen = 1,
-    .nrVBs = 3,
-    .type = FS_PHY_CHANNEL,
+//   IMPFSChnAttr fs_chn_attr = {
+//     .pixFmt = PIX_FMT_NV12,
+//     .outFrmRateNum = 25,
+//     .outFrmRateDen = 1,
+//     .nrVBs = 3,
+//     .type = FS_PHY_CHANNEL,
 
-    .crop.enable = 0,
-    .crop.top = 0,
-    .crop.left = 0,
-    .crop.width = stream_settings->pic_width,
-    .crop.height = stream_settings->pic_height,
+//     .crop.enable = stream_settings->crop_enable,
+//     .crop.top = stream_settings->crop_top,
+//     .crop.left = stream_settings->crop_left,
+//     .crop.width = stream_settings->crop_width,
+//     .crop.height = stream_settings->crop_height,
 
-    .scaler.enable = 0,
-    .scaler.outwidth = stream_settings->pic_width,
-    .scaler.outheight = stream_settings->pic_height,
-    .picWidth = stream_settings->pic_width,
-    .picHeight = stream_settings->pic_height
-  };
+//     .scaler.enable = stream_settings->scaling_enable,
+//     .scaler.outwidth = stream_settings->pic_width,
+//     .scaler.outheight = stream_settings->pic_height,
+//     .picWidth = stream_settings->pic_width,
+//     .picHeight = stream_settings->pic_height
+//   };
 
-  log_info("Setting up frame source for channel %d", encoder_setting->channel);
+//   log_info("Setting up frame source for channel %d", encoder_setting->channel);
 
 
-  ret = IMP_FrameSource_CreateChn(encoder_setting->channel, &fs_chn_attr);
-  if(ret < 0){
-    log_error("IMP_FrameSource_CreateChn error for channel %d.", encoder_setting->channel);
-    return -1;
-  }
-  log_info("Created frame source channel %d", encoder_setting->channel);
+//   ret = IMP_FrameSource_CreateChn(encoder_setting->channel, &fs_chn_attr);
+//   if(ret < 0){
+//     log_error("IMP_FrameSource_CreateChn error for channel %d.", encoder_setting->channel);
+//     return -1;
+//   }
+//   log_info("Created frame source channel %d", encoder_setting->channel);
 
-  ret = IMP_FrameSource_SetChnAttr(encoder_setting->channel, &fs_chn_attr);
-  if (ret < 0) {
-    log_error("IMP_FrameSource_SetChnAttr error for channel %d.", encoder_setting->channel);
-    return -1;
-  }
+//   ret = IMP_FrameSource_SetChnAttr(encoder_setting->channel, &fs_chn_attr);
+//   if (ret < 0) {
+//     log_error("IMP_FrameSource_SetChnAttr error for channel %d.", encoder_setting->channel);
+//     return -1;
+//   }
 
-  log_info("Frame source setup complete for channel %d", encoder_setting->channel);
+//   log_info("Frame source setup complete for channel %d", encoder_setting->channel);
 
-  return 0;
-}
+//   return 0;
+// }
 
 int setup_encoding_engine(StreamSettings* stream_settings, EncoderSetting *encoder_setting)
 {
@@ -485,6 +485,8 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
   float current_fps = 0;
   float elapsed_seconds = 0;
   struct timeval tval_before, tval_after, tval_result;
+  float delay_in_seconds = 0;
+
 
 
   IMPCell framesource_chn = { DEV_ID_FS, stream_settings->group, encoder_setting->channel};
@@ -517,6 +519,9 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
   log_info("Framesource Channel: %d, %d, %d", framesource_chn.deviceID, framesource_chn.groupID, framesource_chn.outputID);
   log_info("Encoder: %d, %d, %d", imp_encoder.deviceID, imp_encoder.groupID, imp_encoder.outputID);
 
+  delay_in_seconds = (1.0 * stream_settings->frame_rate_denominator) / stream_settings->frame_rate_numerator;
+  log_info("Delay in seconds: %f", delay_in_seconds);
+
 
   ret = IMP_FrameSource_GetChnAttr(stream_settings->group, &framesrc_channel_attr);
   if (ret < 0) {
@@ -531,9 +536,6 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
     log_error("Error binding frame source to encoder for stream %s", stream_settings->name);
     return -1;
   }
-
-
-
 
   // You can only initialize the FrameSource for the group once.
   // To ensure this only happens once we use a mutex so only one
@@ -565,7 +567,6 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
 
   // ret = ioctl(v4l2_fd, VIDIOC_QUERYCAP, &vid_caps);
 
-
   memset(&vid_format, 0, sizeof(vid_format));
   vid_format.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
   vid_format.fmt.pix.width = video_width;
@@ -580,7 +581,8 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
   }
   else if(strcmp(encoder_setting->payload_type, "PT_JPEG") == 0) {
     vid_format.fmt.pix.pixelformat = V4L2_PIX_FMT_JPEG;
-    vid_format.fmt.pix.sizeimage = 0;
+    // TODO: Is this correct? Doc says needs to be set to maximum size of image
+    vid_format.fmt.pix.sizeimage = 0; 
     vid_format.fmt.pix.field = V4L2_FIELD_NONE;
     vid_format.fmt.pix.bytesperline = 0;
     vid_format.fmt.pix.colorspace = V4L2_COLORSPACE_JPEG;
@@ -608,7 +610,6 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
 
   log_info("Sleeping 2 seconds before starting to send frames...");
   sleep(2);
-
 
 
   ret = IMP_Encoder_StartRecvPic(encoder_setting->channel);
@@ -659,15 +660,7 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
     // }
 
 
-
-
-
-
-
     // Video Frames
-
-
-
     if (frames_written == 200) {
       gettimeofday(&tval_after, NULL);
       timersub(&tval_after, &tval_before, &tval_result);
@@ -675,8 +668,8 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
       elapsed_seconds =  (long int)tval_result.tv_sec + ((long int)tval_result.tv_usec / 1000000);
 
       current_fps = 200 / elapsed_seconds;
-      log_info("Current FPS: %.2f", current_fps);
-      log_info("Obtained %d 16-bit samples from this specific audio frame", num_samples);
+      log_info("Current FPS: %.2f / Channel %d", current_fps, encoder_setting->channel);
+      //log_info("Obtained %d 16-bit samples from this specific audio frame", num_samples);
 
       frames_written = 0;
       gettimeofday(&tval_before, NULL);
@@ -726,31 +719,21 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
       log_debug("Total size of chunk after concatenating: %d bytes.", total);
     }
 
-    // hexdump("NAL Packet", stream.pack[i].virAddr, 10);
-
-    /*
-    ret = find_nal_unit(stream_chunk, total, &nal_start, &nal_end);
-
-    if (ret > 0) {
-      log_debug("Found a NAL unit: %d", ret);
-      read_nal_unit(h, &stream_chunk[nal_start], nal_end - nal_start);
-      debug_nal(h, h->nal);
-    }
-    */
-
     // Write out to the V4L2 device (for example /dev/video0)
     ret = write(v4l2_fd, (void *)stream_chunk, total);
     if (ret != total) {
       log_error("Stream write error: %s", ret);
       return -1;
     }
-
-
+  
     free(stream_chunk);
 
     IMP_Encoder_ReleaseStream(encoder_setting->channel, &stream);
 
     frames_written = frames_written + 1;
+
+    usleep(1000 * 1000 * delay_in_seconds);
+
   }
 
 

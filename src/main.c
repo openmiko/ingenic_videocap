@@ -32,27 +32,28 @@ void start_frame_producer_threads(StreamSettings stream_settings[], int num_stre
 
   EncoderThreadParams *encoder_thread_params;
 
+  IMPFSChnAttr *frame_source_attributes;
+  IMPFSChnAttr *frame_source_attr;
 
+  // IMPFSChnAttr fs_chn_attr = {
+  //   .pixFmt = PIX_FMT_NV12,
+  //   .outFrmRateNum = 25,
+  //   .outFrmRateDen = 1,
+  //   .nrVBs = 3,
+  //   .type = FS_PHY_CHANNEL,
 
-  IMPFSChnAttr fs_chn_attr = {
-    .pixFmt = PIX_FMT_NV12,
-    .outFrmRateNum = 25,
-    .outFrmRateDen = 1,
-    .nrVBs = 3,
-    .type = FS_PHY_CHANNEL,
+  //   .crop.enable = 0,
+  //   .crop.top = 0,
+  //   .crop.left = 0,
+  //   .crop.width = 0,
+  //   .crop.height = 0,
 
-    .crop.enable = 0,
-    .crop.top = 0,
-    .crop.left = 0,
-    .crop.width = 0,
-    .crop.height = 0,
-
-    .scaler.enable = 0,
-    .scaler.outwidth = 0,
-    .scaler.outheight = 0,
-    .picWidth = 0,
-    .picHeight = 0
-  };
+  //   .scaler.enable = 0,
+  //   .scaler.outwidth = 0,
+  //   .scaler.outheight = 0,
+  //   .picWidth = 0,
+  //   .picHeight = 0
+  // };
 
   // Calculate out the number of threads to create by looping through all the streams
   for (i = 0; i < num_streams; i++) {
@@ -67,7 +68,8 @@ void start_frame_producer_threads(StreamSettings stream_settings[], int num_stre
   thread_ids = (pthread_t *)calloc(total_encoders, sizeof(pthread_t)); 
   encoder_thread_params = (EncoderThreadParams *)calloc(total_encoders, sizeof(EncoderThreadParams)); 
 
-
+  // Each stream/channel gets its own frame source attribute structure
+  frame_source_attributes = (IMPFSChnAttr *)malloc(num_streams * sizeof(*frame_source_attributes));
 
   // Loop through all the streams
   for (i = 0; i < num_streams; i++) {
@@ -77,18 +79,35 @@ void start_frame_producer_threads(StreamSettings stream_settings[], int num_stre
       continue;
     }
 
-    fs_chn_attr.picWidth = stream_settings[i].pic_width;
-    fs_chn_attr.picHeight = stream_settings[i].pic_height;
+
+    frame_source_attributes[i].pixFmt = PIX_FMT_NV12;
+    frame_source_attributes[i].outFrmRateNum = stream_settings[i].frame_rate_numerator;
+    frame_source_attributes[i].outFrmRateDen = stream_settings[i].frame_rate_denominator;
+    frame_source_attributes[i].nrVBs = 3;
+    frame_source_attributes[i].type = FS_PHY_CHANNEL;
+    frame_source_attributes[i].crop.enable = stream_settings[i].crop_enable;
+    frame_source_attributes[i].crop.top = stream_settings[i].crop_top;
+    frame_source_attributes[i].crop.left = stream_settings[i].crop_left;
+    frame_source_attributes[i].crop.width = stream_settings[i].crop_width;
+    frame_source_attributes[i].crop.height = stream_settings[i].crop_height;
+    frame_source_attributes[i].scaler.enable = stream_settings[i].scaling_enable;
+    frame_source_attributes[i].scaler.outwidth = stream_settings[i].scaling_width;
+    frame_source_attributes[i].scaler.outheight = stream_settings[i].scaling_height;
+    frame_source_attributes[i].picWidth = stream_settings[i].pic_width;
+    frame_source_attributes[i].picHeight = stream_settings[i].pic_height;
+
+    // fs_chn_attr.picWidth = stream_settings[i].pic_width;
+    // fs_chn_attr.picHeight = stream_settings[i].pic_height;
 
 
-    ret = IMP_FrameSource_CreateChn(i, &fs_chn_attr);
+    ret = IMP_FrameSource_CreateChn(i, &frame_source_attributes[i]);
     if(ret < 0){
       log_error("IMP_FrameSource_CreateChn error for channel %d.", i);
       return;
     }
     log_info("Created frame source channel %d", i);
 
-    ret = IMP_FrameSource_SetChnAttr(i, &fs_chn_attr);
+    ret = IMP_FrameSource_SetChnAttr(i, &frame_source_attributes[i]);
     if (ret < 0) {
       log_error("IMP_FrameSource_SetChnAttr error for channel %d.", i);
       return;
@@ -126,6 +145,7 @@ void start_frame_producer_threads(StreamSettings stream_settings[], int num_stre
 
   free(thread_ids);
   free(encoder_thread_params);
+  free(frame_source_attributes);
 
 }
 

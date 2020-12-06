@@ -26,7 +26,9 @@ int populate_stream_settings(StreamSettings *settings, cJSON *json)
     "crop_height",
     "scaling_enable",
     "scaling_width",
-    "scaling_height"
+    "scaling_height",
+    "frame_rate_numerator",
+    "frame_rate_denominator"
   };
   cJSON *json_attribute;
   cJSON *encoder;
@@ -59,6 +61,8 @@ int populate_stream_settings(StreamSettings *settings, cJSON *json)
   cJSON *scaling_enable = cJSON_GetObjectItemCaseSensitive(json, "scaling_enable");
   cJSON *scaling_width = cJSON_GetObjectItemCaseSensitive(json, "scaling_width");
   cJSON *scaling_height = cJSON_GetObjectItemCaseSensitive(json, "scaling_height");
+  cJSON *frame_rate_numerator = cJSON_GetObjectItemCaseSensitive(json, "frame_rate_numerator");
+  cJSON *frame_rate_denominator = cJSON_GetObjectItemCaseSensitive(json, "frame_rate_denominator");
 
   cJSON *encoders = cJSON_GetObjectItemCaseSensitive(json, "encoders");
 
@@ -85,6 +89,8 @@ int populate_stream_settings(StreamSettings *settings, cJSON *json)
   settings->scaling_enable = scaling_enable->valueint;
   settings->scaling_width = scaling_width->valueint;
   settings->scaling_height = scaling_height->valueint;
+  settings->frame_rate_numerator = frame_rate_numerator->valueint;
+  settings->frame_rate_denominator = frame_rate_denominator->valueint;
 
 
   // Dynamically allocate an array to store encoder structs
@@ -115,11 +121,11 @@ int populate_stream_settings(StreamSettings *settings, cJSON *json)
     cJSON *mode = cJSON_GetObjectItemCaseSensitive(encoder, "mode");
     strcpy(settings->encoders[i].mode, mode->valuestring);
 
-    cJSON *frame_rate_numerator = cJSON_GetObjectItemCaseSensitive(encoder, "frame_rate_numerator");
-    settings->encoders[i].frame_rate_numerator = frame_rate_numerator->valueint;
+    cJSON *frame_rate_numerator_enc = cJSON_GetObjectItemCaseSensitive(encoder, "frame_rate_numerator");
+    settings->encoders[i].frame_rate_numerator = frame_rate_numerator_enc->valueint;
 
-    cJSON *frame_rate_denominator = cJSON_GetObjectItemCaseSensitive(encoder, "frame_rate_denominator");
-    settings->encoders[i].frame_rate_denominator = frame_rate_denominator->valueint;
+    cJSON *frame_rate_denominator_enc = cJSON_GetObjectItemCaseSensitive(encoder, "frame_rate_denominator");
+    settings->encoders[i].frame_rate_denominator = frame_rate_denominator_enc->valueint;
 
     cJSON *max_group_of_pictures = cJSON_GetObjectItemCaseSensitive(encoder, "max_group_of_pictures");
     settings->encoders[i].max_group_of_pictures = max_group_of_pictures->valueint;

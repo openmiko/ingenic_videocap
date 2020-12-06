@@ -22,7 +22,8 @@ typedef struct stream_settings {
 	int enabled;
 	int pic_width;
 	int pic_height;
-
+	int frame_rate_numerator;
+	int frame_rate_denominator;
 	int statistics_interval;
 	int max_bitrate;
 	int change_pos;
