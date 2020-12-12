@@ -11,7 +11,7 @@ extern sig_atomic_t sigint_received;
 extern snd_pcm_t *pcm_handle;
 extern pthread_mutex_t frame_generator_mutex; 
 
-int FrameSourceInitialized[5] = {0,0,0,0,0};
+int FrameSourceEnabled[5] = {0,0,0,0,0};
 
 int initialize_sensor(IMPSensorInfo *sensor_info)
 {
@@ -68,7 +68,7 @@ int initialize_sensor(IMPSensorInfo *sensor_info)
 	ret = IMP_ISP_AddSensor(sensor_info);
 	if(ret < 0){
 		log_error("Failed to register the %s sensor.", sensor_name);
-		return -1;
+		exit(-1);
 	}
   else {
     log_info("Added the %s sensor.", sensor_name);
@@ -251,67 +251,29 @@ int initialize_audio()
 }
 
 
-int create_encoding_group(StreamSettings* stream_settings)
+int create_encoding_group(int group_id)
 {
+  // One group only supports one resolution, and different resolutions
+  // need to start a new group. A Group supports both H264 and JPEG
+  // capture formats
+
   int ret;
 
-
-  ret = IMP_Encoder_CreateGroup(stream_settings->group);
+  ret = IMP_Encoder_CreateGroup(group_id);
   if (ret < 0) {
-    log_error("IMP_Encoder_CreateGroup error.");
+    log_warn("IMP_Encoder_CreateGroup(%d) error. Can be ignored if already created.", group_id);
     return -1;
+  }
+  else {
+    log_info("Created encoding group %d", group_id);
   }
 
   return 0;
 }
 
 
-// int setup_framesource(StreamSettings* stream_settings, EncoderSetting *encoder_setting)
-// {
-//   int ret;
 
-//   IMPFSChnAttr fs_chn_attr = {
-//     .pixFmt = PIX_FMT_NV12,
-//     .outFrmRateNum = 25,
-//     .outFrmRateDen = 1,
-//     .nrVBs = 3,
-//     .type = FS_PHY_CHANNEL,
-
-//     .crop.enable = stream_settings->crop_enable,
-//     .crop.top = stream_settings->crop_top,
-//     .crop.left = stream_settings->crop_left,
-//     .crop.width = stream_settings->crop_width,
-//     .crop.height = stream_settings->crop_height,
-
-//     .scaler.enable = stream_settings->scaling_enable,
-//     .scaler.outwidth = stream_settings->pic_width,
-//     .scaler.outheight = stream_settings->pic_height,
-//     .picWidth = stream_settings->pic_width,
-//     .picHeight = stream_settings->pic_height
-//   };
-
-//   log_info("Setting up frame source for channel %d", encoder_setting->channel);
-
-
-//   ret = IMP_FrameSource_CreateChn(encoder_setting->channel, &fs_chn_attr);
-//   if(ret < 0){
-//     log_error("IMP_FrameSource_CreateChn error for channel %d.", encoder_setting->channel);
-//     return -1;
-//   }
-//   log_info("Created frame source channel %d", encoder_setting->channel);
-
-//   ret = IMP_FrameSource_SetChnAttr(encoder_setting->channel, &fs_chn_attr);
-//   if (ret < 0) {
-//     log_error("IMP_FrameSource_SetChnAttr error for channel %d.", encoder_setting->channel);
-//     return -1;
-//   }
-
-//   log_info("Frame source setup complete for channel %d", encoder_setting->channel);
-
-//   return 0;
-// }
-
-int setup_encoding_engine(StreamSettings* stream_settings, EncoderSetting *encoder_setting)
+int setup_encoding_engine(FrameSource* frame_source, EncoderSetting *encoder_setting)
 {
   int i, ret;
   IMPEncoderAttr *enc_attr;
@@ -320,7 +282,6 @@ int setup_encoding_engine(StreamSettings* stream_settings, EncoderSetting *encod
   IMPEncoderCHNAttr channel_attr;
 
   // imp_chn_attr_tmp = &chn[i].fs_chn_attr;
-
 
   memset(&channel_attr, 0, sizeof(IMPEncoderCHNAttr));
   enc_attr = &channel_attr.encAttr;
@@ -338,11 +299,9 @@ int setup_encoding_engine(StreamSettings* stream_settings, EncoderSetting *encod
 
   enc_attr->bufSize = encoder_setting->buffer_size;
   enc_attr->profile = encoder_setting->profile;
-  enc_attr->picWidth = stream_settings->pic_width;
-  enc_attr->picHeight = stream_settings->pic_height;
+  enc_attr->picWidth = frame_source->pic_width;
+  enc_attr->picHeight = frame_source->pic_height;
   rc_attr = &channel_attr.rcAttr;
-
-
 
   if (strcmp(encoder_setting->mode, "ENC_RC_MODE_H264VBR") == 0) {
     rc_attr->rcMode = ENC_RC_MODE_H264VBR;
@@ -375,6 +334,10 @@ int setup_encoding_engine(StreamSettings* stream_settings, EncoderSetting *encod
   rc_attr->attrH264FrmUsed.enable = 1;
 
 
+  log_info("Encoder channel attributes for channel %d", encoder_setting->channel);
+  print_encoder_channel_attributes(&channel_attr);
+
+
   ret = IMP_Encoder_CreateChn(encoder_setting->channel, &channel_attr);
   if (ret < 0) {
     log_error("Error creating encoder channel %d", encoder_setting->channel);      
@@ -383,12 +346,12 @@ int setup_encoding_engine(StreamSettings* stream_settings, EncoderSetting *encod
 
   log_info("Created encoder channel %d", encoder_setting->channel);
 
-  ret = IMP_Encoder_RegisterChn(stream_settings->group, encoder_setting->channel);
+  ret = IMP_Encoder_RegisterChn(encoder_setting->group, encoder_setting->channel);
   if (ret < 0) {
     log_error("IMP_Encoder_RegisterChn error.");
     return -1;
   }
-  log_info("Registered channel %d to group %d.", encoder_setting->channel, stream_settings->group);
+  log_info("IMP_Encoder_RegisterChn(Group [%d], Channel [%d])", encoder_setting->group, encoder_setting->channel);
 
   return 0;
 
@@ -411,6 +374,65 @@ void print_channel_attributes(IMPFSChnAttr *attr)
                     );
   log_info("%s", buffer);
 }
+
+
+void print_encoder_channel_attributes(IMPEncoderCHNAttr *attr)
+{
+  IMPEncoderAttr *enc_attr;
+  IMPEncoderRcAttr *rc_attr;  
+  char buffer[4096];
+  char payload_type[32];
+
+  enc_attr = &attr->encAttr;
+  rc_attr = &attr->rcAttr;
+
+
+  switch(enc_attr->enType) {
+    case PT_H264:
+      strcpy(payload_type, "PT_H264");
+      break;
+    case PT_JPEG:
+      strcpy(payload_type, "PT_JPEG");
+      break;
+    default:
+      strcpy(payload_type, "ERROR_UNKNOWN");
+  }
+
+  snprintf(buffer, sizeof(buffer), "IMPEncoderCHNAttr: \n"
+                   "payload_type: %s\n"
+                   "bufSize: %u\n"
+                   "profile: %u\n"
+                   "picWidth: %u\n"
+                   "picHeight: %u\n"
+                   "attrH264Vbr.outFrmRate.frmRateNum: %u\n"
+                   "attrH264Vbr.outFrmRate.frmRateDen: %u\n"
+                   "attrH264Vbr.maxGop: %u\n"
+                   "attrH264Vbr.maxQp: %u\n"
+                   "attrH264Vbr.minQp: %u\n"
+                   "attrH264Vbr.staticTime: %u\n"
+                   "attrH264Vbr.maxBitRate: %u\n"
+                   "attrH264Vbr.changePos: %u\n"
+                   "attrH264Vbr.FrmQPStep: %u\n"
+                   "attrH264Vbr.GOPQPStep: %u\n",
+                    payload_type,
+                    enc_attr->bufSize,
+                    enc_attr->profile,
+                    enc_attr->picWidth,
+                    enc_attr->picHeight,
+                    rc_attr->attrH264Vbr.outFrmRate.frmRateNum,
+                    rc_attr->attrH264Vbr.outFrmRate.frmRateDen,
+                    rc_attr->attrH264Vbr.maxGop,
+                    rc_attr->attrH264Vbr.maxQp,
+                    rc_attr->attrH264Vbr.minQp,
+                    rc_attr->attrH264Vbr.staticTime,
+                    rc_attr->attrH264Vbr.maxBitRate,
+                    rc_attr->attrH264Vbr.changePos,
+                    rc_attr->attrH264Vbr.FrmQPStep,
+                    rc_attr->attrH264Vbr.GOPQPStep
+                    );
+  log_info("%s", buffer);
+}
+
 
 void print_stream_settings(StreamSettings *stream_settings)
 {
@@ -443,43 +465,24 @@ void *produce_frames(void *encoder_thread_params_ptr)
   int ret, i;
   EncoderThreadParams *encoder_thread_params = encoder_thread_params_ptr;
 
-  StreamSettings *stream_settings = encoder_thread_params->stream_settings;
-  EncoderSetting *encoder_setting = encoder_thread_params->encoder_setting;
+  // Unpack the EncoderThreadParams
+  EncoderSetting *encoder = encoder_thread_params->encoder;
 
-  log_info("Starting thread for channel %d", encoder_setting->channel);
+  log_info("Starting thread for encoder");
 
-
-  print_stream_settings(stream_settings);
-
-  create_encoding_group(stream_settings);
-
-
-
-
-
-  //setup_framesource(stream_settings, encoder_setting);
-
-
-
-
-
-
-  setup_encoding_engine(stream_settings, encoder_setting);
-  output_v4l2_frames(stream_settings, encoder_setting);
-
-
+  output_v4l2_frames(encoder);
 
 }
 
-int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_setting)
+int output_v4l2_frames(EncoderSetting *encoder_setting)
 {
   int ret;
   int stream_packets;
   int i;
   int total;
   char *v4l2_device_path = encoder_setting->v4l2_device_path;
-  int video_width = stream_settings->pic_width;
-  int video_height = stream_settings->pic_height;
+  int video_width = encoder_setting->pic_width;
+  int video_height = encoder_setting->pic_height;
 
   int frames_written = 0;
   float current_fps = 0;
@@ -488,9 +491,6 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
   float delay_in_seconds = 0;
 
 
-
-  IMPCell framesource_chn = { DEV_ID_FS, stream_settings->group, encoder_setting->channel};
-  IMPCell imp_encoder = { DEV_ID_ENC, stream_settings->group, 0};
 
   struct v4l2_capability vid_caps;
   struct v4l2_format vid_format;
@@ -514,45 +514,14 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
   // uint8_t* buf;
   // int len;
 
-  IMPFSChnAttr framesrc_channel_attr; 
 
-  log_info("Framesource Channel: %d, %d, %d", framesource_chn.deviceID, framesource_chn.groupID, framesource_chn.outputID);
-  log_info("Encoder: %d, %d, %d", imp_encoder.deviceID, imp_encoder.groupID, imp_encoder.outputID);
 
-  delay_in_seconds = (1.0 * stream_settings->frame_rate_denominator) / stream_settings->frame_rate_numerator;
+
+  delay_in_seconds = (1.0 * encoder_setting->frame_rate_denominator) / encoder_setting->frame_rate_numerator;
   log_info("Delay in seconds: %f", delay_in_seconds);
 
 
-  ret = IMP_FrameSource_GetChnAttr(stream_settings->group, &framesrc_channel_attr);
-  if (ret < 0) {
-    log_error("Error retrieving frame source channel attributes for channel %d", stream_settings->group);
-    return -1;
-  }
-  print_channel_attributes(&framesrc_channel_attr);
 
-
-  ret = IMP_System_Bind(&framesource_chn, &imp_encoder);
-  if (ret < 0) {
-    log_error("Error binding frame source to encoder for stream %s", stream_settings->name);
-    return -1;
-  }
-
-  // You can only initialize the FrameSource for the group once.
-  // To ensure this only happens once we use a mutex so only one
-  // of the threads initializes the FrameSource
-  pthread_mutex_lock(&frame_generator_mutex); 
-
-  // If this group's framesource has not been initialized yet
-  if( FrameSourceInitialized[stream_settings->group] == 0 ) {
-    log_info("Enabling FrameSource channel %d", stream_settings->group);
-    ret = IMP_FrameSource_EnableChn(stream_settings->group);
-    if (ret < 0) {
-      log_error("IMP_FrameSource_EnableChn(%d) error: %d", stream_settings->group, ret);
-    } else {
-      FrameSourceInitialized[stream_settings->group] = 1;      
-    }
-  }
-  pthread_mutex_unlock(&frame_generator_mutex); 
 
 
 
@@ -609,7 +578,6 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
   
 
   log_info("Sleeping 2 seconds before starting to send frames...");
-  sleep(2);
 
 
   ret = IMP_Encoder_StartRecvPic(encoder_setting->channel);
@@ -661,6 +629,7 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
 
 
     // Video Frames
+
     if (frames_written == 200) {
       gettimeofday(&tval_after, NULL);
       timersub(&tval_after, &tval_before, &tval_result);
@@ -671,17 +640,29 @@ int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_
       log_info("Current FPS: %.2f / Channel %d", current_fps, encoder_setting->channel);
       //log_info("Obtained %d 16-bit samples from this specific audio frame", num_samples);
 
+
+      // IMPEncoderCHNStat encoder_status;
+
+      // IMP_Encoder_Query(encoder_setting->channel, &encoder_status);
+
+      // log_info("Registered: %u", encoder_status.registered);
+      // log_info("Work done (0 is running, 1 is not running): %u", encoder_status.work_done);
+      // log_info("Number of images to be encoded: %u", encoder_status.leftPics);
+      // log_info("Number of bytes remaining in the stream buffer: %u", encoder_status.leftStreamBytes);
+
       frames_written = 0;
       gettimeofday(&tval_before, NULL);
     }
 
+
     ret = IMP_Encoder_PollingStream(encoder_setting->channel, 1000);
     if (ret < 0) {
-      log_error("Timeout while polling for stream.");
+      log_error("Timeout while polling for stream on channel %d.", encoder_setting->channel);
       continue;
     }
 
-    // Get H264 Stream on channel 0 and enable a blocking call
+
+    // Get H264 Stream on channel and enable a blocking call
     ret = IMP_Encoder_GetStream(encoder_setting->channel, &stream, 1);
     if (ret < 0) {
       log_error("IMP_Encoder_GetStream() failed");
