@@ -35,25 +35,7 @@ void start_frame_producer_threads(StreamSettings stream_settings[], int num_stre
   IMPFSChnAttr *frame_source_attributes;
   IMPFSChnAttr *frame_source_attr;
 
-  // IMPFSChnAttr fs_chn_attr = {
-  //   .pixFmt = PIX_FMT_NV12,
-  //   .outFrmRateNum = 25,
-  //   .outFrmRateDen = 1,
-  //   .nrVBs = 3,
-  //   .type = FS_PHY_CHANNEL,
 
-  //   .crop.enable = 0,
-  //   .crop.top = 0,
-  //   .crop.left = 0,
-  //   .crop.width = 0,
-  //   .crop.height = 0,
-
-  //   .scaler.enable = 0,
-  //   .scaler.outwidth = 0,
-  //   .scaler.outheight = 0,
-  //   .picWidth = 0,
-  //   .picHeight = 0
-  // };
 
   // Calculate out the number of threads to create by looping through all the streams
   for (i = 0; i < num_streams; i++) {
@@ -288,6 +270,10 @@ int main(int argc, const char *argv[])
   } 
 
 
+  test_static_configuration();
+  return 0;
+
+
   // This will suspend the main thread until the streams quit
   start_frame_producer_threads(stream_settings, num_stream_settings);
 
@@ -307,4 +293,153 @@ err:
   return 0;
 }
 
+void test_static_configuration()
+{
+  int ret;
+  IMPFSChnAttr fs_chn_attr = {
+    .pixFmt = PIX_FMT_NV12,
+    .outFrmRateNum = 25,
+    .outFrmRateDen = 1,
+    .nrVBs = 3,
+    .type = FS_PHY_CHANNEL,
 
+    .crop.enable = 0,
+    .crop.top = 0,
+    .crop.left = 0,
+    .crop.width = 0,
+    .crop.height = 0,
+
+    .scaler.enable = 0,
+    .scaler.outwidth = 0,
+    .scaler.outheight = 0,
+    .picWidth = 0,
+    .picHeight = 0
+  };
+
+  IMPEncoderCHNAttr channel0_attr;
+  memset(&channel0_attr, 0, sizeof(IMPEncoderCHNAttr));
+
+  IMPEncoderAttr *enc_attr;
+  IMPEncoderRcAttr *rc_attr;
+
+  enc_attr = &channel0_attr.encAttr;
+  rc_attr = &channel0_attr.rcAttr;
+
+
+  enc_attr->enType = PT_H264;
+  enc_attr->bufSize = 0;
+  enc_attr->profile = 0;
+  enc_attr->picWidth = 1920;
+  enc_attr->picHeight = 1080;
+
+  rc_attr->rcMode = ENC_RC_MODE_H264VBR;
+  rc_attr->attrH264Vbr.outFrmRate.frmRateNum = 25;
+  rc_attr->attrH264Vbr.outFrmRate.frmRateDen = 1;
+  rc_attr->attrH264Vbr.maxGop = 3;
+  rc_attr->attrH264Vbr.maxQp = 38;
+  rc_attr->attrH264Vbr.minQp = 15;
+  rc_attr->attrH264Vbr.staticTime = 1;
+  rc_attr->attrH264Vbr.maxBitRate = 500;
+  rc_attr->attrH264Vbr.changePos = 50;
+  rc_attr->attrH264Vbr.FrmQPStep = 3;
+  rc_attr->attrH264Vbr.GOPQPStep = 15;
+  rc_attr->attrH264FrmUsed.enable = 1;
+
+
+
+  IMPEncoderCHNAttr channel1_attr;
+  memset(&channel1_attr, 0, sizeof(IMPEncoderCHNAttr));
+
+  IMPEncoderAttr *enc_attr1;
+  IMPEncoderRcAttr *rc_attr1;
+
+  enc_attr1 = &channel1_attr.encAttr;
+  rc_attr1 = &channel1_attr.rcAttr;
+
+
+  enc_attr1->enType = PT_H264;
+  enc_attr1->bufSize = 0;
+  enc_attr1->profile = 0;
+  enc_attr1->picWidth = 1920;
+  enc_attr1->picHeight = 1080;
+
+  rc_attr1->rcMode = ENC_RC_MODE_H264VBR;
+  rc_attr1->attrH264Vbr.outFrmRate.frmRateNum = 25;
+  rc_attr1->attrH264Vbr.outFrmRate.frmRateDen = 1;
+  rc_attr1->attrH264Vbr.maxGop = 3;
+  rc_attr1->attrH264Vbr.maxQp = 38;
+  rc_attr1->attrH264Vbr.minQp = 15;
+  rc_attr1->attrH264Vbr.staticTime = 1;
+  rc_attr1->attrH264Vbr.maxBitRate = 500;
+  rc_attr1->attrH264Vbr.changePos = 50;
+  rc_attr1->attrH264Vbr.FrmQPStep = 3;
+  rc_attr1->attrH264Vbr.GOPQPStep = 15;
+  rc_attr1->attrH264FrmUsed.enable = 1;
+
+
+
+  IMPEncoderCHNAttr channel2_attr;
+  memset(&channel2_attr, 0, sizeof(IMPEncoderCHNAttr));
+
+  IMPEncoderAttr *enc_attr2;
+  IMPEncoderRcAttr *rc_attr2;
+
+  enc_attr2 = &channel2_attr.encAttr;
+  rc_attr2 = &channel2_attr.rcAttr;
+
+
+  enc_attr2->enType = PT_JPEG;
+  enc_attr2->bufSize = 0;
+  enc_attr2->profile = 0;
+  enc_attr2->picWidth = 1920;
+  enc_attr2->picHeight = 1080;
+
+  rc_attr2->rcMode = ENC_RC_MODE_H264VBR;
+  rc_attr2->attrH264Vbr.outFrmRate.frmRateNum = 25;
+  rc_attr2->attrH264Vbr.outFrmRate.frmRateDen = 1;
+  rc_attr2->attrH264Vbr.maxGop = 3;
+  rc_attr2->attrH264Vbr.maxQp = 38;
+  rc_attr2->attrH264Vbr.minQp = 15;
+  rc_attr2->attrH264Vbr.staticTime = 1;
+  rc_attr2->attrH264Vbr.maxBitRate = 500;
+  rc_attr2->attrH264Vbr.changePos = 50;
+  rc_attr2->attrH264Vbr.FrmQPStep = 3;
+  rc_attr2->attrH264Vbr.GOPQPStep = 15;
+  rc_attr2->attrH264FrmUsed.enable = 1;
+
+
+
+
+  ret = IMP_FrameSource_CreateChn(0, &fs_chn_attr);
+  if(ret < 0){
+    log_error("IMP_FrameSource_CreateChn error for channel 0");
+    return;
+  }
+
+  ret = IMP_FrameSource_SetChnAttr(0, &fs_chn_attr);
+  if (ret < 0) {
+    log_error("IMP_FrameSource_SetChnAttr error for channel 0");
+    return;
+  }
+
+  log_info("test_static_configuration done");
+
+  ret = IMP_Encoder_CreateChn(0, &channel0_attr);
+  if (ret < 0) {
+    log_error("Error creating encoder channel 0");      
+    return -1;
+  }
+
+  ret = IMP_Encoder_CreateChn(1, &channel1_attr);
+  if (ret < 0) {
+    log_error("Error creating encoder channel 1");      
+    return -1;
+  }
+
+  ret = IMP_Encoder_CreateChn(2, &channel2_attr);
+  if (ret < 0) {
+    log_error("Error creating encoder channel 2");      
+    return -1;
+  }
+
+}

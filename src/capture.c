@@ -375,13 +375,13 @@ int setup_encoding_engine(StreamSettings* stream_settings, EncoderSetting *encod
   rc_attr->attrH264FrmUsed.enable = 1;
 
 
+  log_info("IMP_Encoder_CreateChn: %d", encoder_setting->channel);
   ret = IMP_Encoder_CreateChn(encoder_setting->channel, &channel_attr);
   if (ret < 0) {
     log_error("Error creating encoder channel %d", encoder_setting->channel);      
     return -1;
   }
 
-  log_info("Created encoder channel %d", encoder_setting->channel);
 
   ret = IMP_Encoder_RegisterChn(stream_settings->group, encoder_setting->channel);
   if (ret < 0) {

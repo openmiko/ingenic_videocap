@@ -59,5 +59,7 @@ void hexdump(const char * desc, const void * addr, const int len);
 void *produce_frames(void *ptr);
 void print_stream_settings(StreamSettings *stream_settings);
 void print_channel_attributes(IMPFSChnAttr *attr);
+void test_static_configuration();
+
 
 #endif /* CAPTURE_H */
