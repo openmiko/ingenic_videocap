@@ -21,6 +21,7 @@
  */
 
 #include "log.h"
+#include <pthread.h>
 
 #define MAX_CALLBACKS 32
 
@@ -60,8 +61,8 @@ static void stdout_callback(log_Event *ev) {
     ev->file, ev->line);
 #else
   fprintf(
-    ev->udata, "%s %-5s %s:%d: ",
-    buf, level_strings[ev->level], ev->file, ev->line);
+    ev->udata, "%s %-5s %s:%d:%d: ",
+    buf, level_strings[ev->level], ev->file, ev->line, pthread_self());
 #endif
   vfprintf(ev->udata, ev->fmt, ev->ap);
   fprintf(ev->udata, "\n");

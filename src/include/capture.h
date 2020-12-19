@@ -45,19 +45,20 @@
 
 
 #define MAX_STREAMS				2
+
 #define SENSOR_NAME_MAX_LENGTH	50
 
 
 int initialize_sensor(IMPSensorInfo *sensor_info);
 int initialize_audio();
-int create_encoding_group(StreamSettings* stream_settings);
-int setup_framesource(StreamSettings* stream_settings, EncoderSetting *encoder_setting);
-int setup_encoding_engine(StreamSettings* stream_settings, EncoderSetting* encoder_setting);
-int output_v4l2_frames(StreamSettings *stream_settings, EncoderSetting *encoder_setting);
+int create_encoding_group(int group_id);
+int setup_encoding_engine(FrameSource* frame_source, EncoderSetting* encoder_setting);
+int output_v4l2_frames(EncoderSetting *encoder_setting);
 int sensor_cleanup(IMPSensorInfo* sensor_info);
 void hexdump(const char * desc, const void * addr, const int len);
 void *produce_frames(void *ptr);
 void print_stream_settings(StreamSettings *stream_settings);
 void print_channel_attributes(IMPFSChnAttr *attr);
+void print_encoder_channel_attributes(IMPEncoderCHNAttr *attr);
 
 #endif /* CAPTURE_H */

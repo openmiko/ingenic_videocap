@@ -9,6 +9,7 @@ pthread_mutex_t frame_generator_mutex;
 
 snd_pcm_t *pcm_handle;
 
+
 /* Signal Handler for SIGINT */
 void sigint_handler(int sig_num) 
 { 
@@ -22,134 +23,290 @@ void sigint_handler(int sig_num)
 }
 
 
-
-void start_frame_producer_threads(StreamSettings stream_settings[], int num_streams)
+void setup_framesource(FrameSource *framesource)
 {
-  int ret, i, j;
-  pthread_t *thread_ids;
-  int total_encoders = 0;
-  int current_encoder = 0;
+  int ret;
+  IMPFSChnAttr *fs_chn_attr = &framesource->imp_fs_attrs;
 
-  EncoderThreadParams *encoder_thread_params;
+  fs_chn_attr->pixFmt = framesource->pixel_format;
+  fs_chn_attr->outFrmRateNum = framesource->frame_rate_numerator;
+  fs_chn_attr->outFrmRateDen = framesource->frame_rate_denominator;
+  fs_chn_attr->nrVBs = framesource->buffer_size;
+  fs_chn_attr->crop.enable = framesource->crop_enable;  
+  fs_chn_attr->crop.top = framesource->crop_top;
+  fs_chn_attr->crop.left = framesource->crop_left;
+  fs_chn_attr->crop.width = framesource->crop_width;
+  fs_chn_attr->crop.height = framesource->crop_height;
+  fs_chn_attr->scaler.enable = framesource->scaling_enable;
+  fs_chn_attr->scaler.outwidth = framesource->scaling_width;
+  fs_chn_attr->scaler.outheight = framesource->scaling_height;
+  fs_chn_attr->picWidth = framesource->pic_width;
+  fs_chn_attr->picHeight = framesource->pic_height;
+  fs_chn_attr->type = framesource->channel_type;
 
-  IMPFSChnAttr *frame_source_attributes;
-  IMPFSChnAttr *frame_source_attr;
 
-  // IMPFSChnAttr fs_chn_attr = {
-  //   .pixFmt = PIX_FMT_NV12,
-  //   .outFrmRateNum = 25,
-  //   .outFrmRateDen = 1,
-  //   .nrVBs = 3,
-  //   .type = FS_PHY_CHANNEL,
+  // Each framesource is identified by a channel ID.
+  // Each framsource also has 2 outputs (this is probably the actual hardware)
 
-  //   .crop.enable = 0,
-  //   .crop.top = 0,
-  //   .crop.left = 0,
-  //   .crop.width = 0,
-  //   .crop.height = 0,
-
-  //   .scaler.enable = 0,
-  //   .scaler.outwidth = 0,
-  //   .scaler.outheight = 0,
-  //   .picWidth = 0,
-  //   .picHeight = 0
-  // };
-
-  // Calculate out the number of threads to create by looping through all the streams
-  for (i = 0; i < num_streams; i++) {
-    if (stream_settings[i].enabled == 1) {
-      total_encoders = total_encoders + stream_settings[i].num_encoders;
-    }
+  ret = IMP_FrameSource_CreateChn(framesource->id, fs_chn_attr);
+  if(ret < 0){
+    log_error("IMP_FrameSource_CreateChn error for framesource %d.", framesource->id);
+    exit(1);
   }
-  log_info("Found %d encoder definitions across all enabled streams.", total_encoders);
+  log_info("Created frame source channel %d", framesource->id);
 
-
-  // Allocate space for the thread IDs and parameters
-  thread_ids = (pthread_t *)calloc(total_encoders, sizeof(pthread_t)); 
-  encoder_thread_params = (EncoderThreadParams *)calloc(total_encoders, sizeof(EncoderThreadParams)); 
-
-  // Each stream/channel gets its own frame source attribute structure
-  frame_source_attributes = (IMPFSChnAttr *)malloc(num_streams * sizeof(*frame_source_attributes));
-
-  // Loop through all the streams
-  for (i = 0; i < num_streams; i++) {
-
-    if (stream_settings[i].enabled == 0) {
-      log_info("Stream %d is not enabled. Skipping.", i);
-      continue;
-    }
-
-
-    frame_source_attributes[i].pixFmt = PIX_FMT_NV12;
-    frame_source_attributes[i].outFrmRateNum = stream_settings[i].frame_rate_numerator;
-    frame_source_attributes[i].outFrmRateDen = stream_settings[i].frame_rate_denominator;
-    frame_source_attributes[i].nrVBs = 3;
-    frame_source_attributes[i].type = FS_PHY_CHANNEL;
-    frame_source_attributes[i].crop.enable = stream_settings[i].crop_enable;
-    frame_source_attributes[i].crop.top = stream_settings[i].crop_top;
-    frame_source_attributes[i].crop.left = stream_settings[i].crop_left;
-    frame_source_attributes[i].crop.width = stream_settings[i].crop_width;
-    frame_source_attributes[i].crop.height = stream_settings[i].crop_height;
-    frame_source_attributes[i].scaler.enable = stream_settings[i].scaling_enable;
-    frame_source_attributes[i].scaler.outwidth = stream_settings[i].scaling_width;
-    frame_source_attributes[i].scaler.outheight = stream_settings[i].scaling_height;
-    frame_source_attributes[i].picWidth = stream_settings[i].pic_width;
-    frame_source_attributes[i].picHeight = stream_settings[i].pic_height;
-
-    // fs_chn_attr.picWidth = stream_settings[i].pic_width;
-    // fs_chn_attr.picHeight = stream_settings[i].pic_height;
-
-
-    ret = IMP_FrameSource_CreateChn(i, &frame_source_attributes[i]);
-    if(ret < 0){
-      log_error("IMP_FrameSource_CreateChn error for channel %d.", i);
-      return;
-    }
-    log_info("Created frame source channel %d", i);
-
-    ret = IMP_FrameSource_SetChnAttr(i, &frame_source_attributes[i]);
-    if (ret < 0) {
-      log_error("IMP_FrameSource_SetChnAttr error for channel %d.", i);
-      return;
-    }
-    log_info("Frame source setup complete for channel %d", i);
-
-
-
-    for (int j = 0; j < stream_settings[i].num_encoders; ++j) {
-      log_info("Creating thread for stream_settings[%d] / encoder[%d]", i, j);
-
-      encoder_thread_params[current_encoder].stream_settings = &stream_settings[i];
-      encoder_thread_params[current_encoder].encoder_setting = &stream_settings[i].encoders[j];
-
-      ret = pthread_create(&thread_ids[current_encoder], NULL, produce_frames, &encoder_thread_params[current_encoder]);
-
-      if (ret < 0) {
-        log_error("Error creating thread for stream %d: %d", i, ret);
-      }
-
-      log_info("Thread %d started.", thread_ids[current_encoder]);
-
-      current_encoder = current_encoder + 1;
-
-    }
-
+  ret = IMP_FrameSource_SetChnAttr(framesource->id, fs_chn_attr);
+  if (ret < 0) {
+    log_error("IMP_FrameSource_SetChnAttr error for channel %d.", framesource->id);
+    exit(1);
   }
 
-  log_info("Created a total of %d threads.", current_encoder);
+  log_info("Frame source setup complete");
+}
 
-  for (i = 0; i < total_encoders; i++) {
-    log_info("Waiting for thread %d to finish.", thread_ids[i]);
-    pthread_join(thread_ids[i], NULL);
+
+int setup_encoder(EncoderSetting *encoder_setting)
+{
+  int ret;
+
+  log_info("Encoder channel attributes for channel %d", encoder_setting->channel);
+  print_encoder_channel_attributes(&encoder_setting->chn_attr);
+
+  create_encoding_group(encoder_setting->group);
+
+  ret = IMP_Encoder_CreateChn(encoder_setting->channel, &encoder_setting->chn_attr);
+  if (ret < 0) {
+    log_error("Error creating encoder channel %d", encoder_setting->channel);      
+    return -1;
   }
 
-  free(thread_ids);
-  free(encoder_thread_params);
-  free(frame_source_attributes);
+  log_info("Created encoder channel %d", encoder_setting->channel);
+
+  ret = IMP_Encoder_RegisterChn(encoder_setting->group, encoder_setting->channel);
+  if (ret < 0) {
+    log_error("IMP_Encoder_RegisterChn error.");
+    return -1;
+  }
+  log_info("IMP_Encoder_RegisterChn(Group [%d], Channel [%d])", encoder_setting->group, encoder_setting->channel);
+
+  return 0;
+}
+
+
+
+int load_framesources(cJSON *json, CameraConfig *camera_config)
+{
+  int i;
+  cJSON *json_stream;
+  cJSON *json_framesources;
+
+  log_info("Loading frame sources");
+
+  // Parse framesources
+  json_framesources = cJSON_GetObjectItemCaseSensitive(json, "frame_sources");
+  if (json_framesources == NULL) {
+    log_error("Key 'frame_sources' not found in JSON.");
+    return -1;
+  }
+  camera_config->num_framesources = cJSON_GetArraySize(json_framesources);
+  log_info("Found %d frame source(s).", camera_config->num_framesources);
+
+  for (i = 0; i < camera_config->num_framesources; ++i) {
+    json_stream = cJSON_DetachItemFromArray(json_framesources, 0);
+    
+    if( populate_framesource(&camera_config->frame_sources[i], json_stream) != 0) {
+      log_error("Error parsing frame_sources[%d].", i);
+      cJSON_Delete(json_stream);
+      return -1;
+    }
+    print_framesource(&camera_config->frame_sources[i]);
+    setup_framesource(&camera_config->frame_sources[i]);
+
+    cJSON_Delete(json_stream);
+  }
+}
+
+int load_encoders(cJSON *json, CameraConfig *camera_config)
+{
+  int i;
+  cJSON *json_stream;
+  cJSON *json_encoders;
+
+  log_info("Loading encoders");
+
+  // Parse encoders
+  json_encoders = cJSON_GetObjectItemCaseSensitive(json, "encoders");
+  if (json_encoders == NULL) {
+    log_error("Key 'encoders' not found in JSON.");
+    return -1;
+  }
+  camera_config->num_encoders = cJSON_GetArraySize(json_encoders);
+  log_info("Found %d encoders.", camera_config->num_encoders);
+
+  for (i = 0; i < camera_config->num_encoders; ++i) {
+    json_stream = cJSON_DetachItemFromArray(json_encoders, 0);
+    
+    if( populate_encoder(&camera_config->encoders[i], json_stream) != 0) {
+      log_error("Error parsing encoders[%d].", i);
+      cJSON_Delete(json_stream);
+      return -1;
+    }
+    print_encoder(&camera_config->encoders[i]);
+    setup_encoder(&camera_config->encoders[i]);
+
+    cJSON_Delete(json_stream);
+  }
 
 }
 
 
+
+/*
+  IMP_System_Bind is used to tie together a frame source and encoder.
+  There are two framesources available and each of them have two outputs.
+
+  This gives you a total of 4 outputs to work with.
+
+  - Framesource Channel 0 with two outputs (Output ID 0 and Output ID 1)
+  - Framesource Channel 1 with two outputs (Output ID 0 and Output ID 1)
+
+  Additional caveats:
+
+  - Each framesource output must be bound in order. You can't bind output ID 1 without first
+  binding output ID 0.
+
+  - You can configure the channels individually as needed.
+
+  IMPCell interpretations for framesource and encoder parameters:
+
+  Framesource:
+    { DEV_ID_FS, IMP_FrameSource_CreateChn ID, Output ID 0 or 1};
+  Encoder:
+    { DEV_ID_ENC, Encoding Group (0 to 5), IMP_Encoder_GetStream Channel (0 to 5) };
+*/
+int setup_binding(Binding *binding)
+{
+  int ret;
+
+  IMPCell source = { 
+    binding->source.device,
+    binding->source.group,
+    binding->source.output
+  };
+
+  IMPCell target = { 
+    binding->target.device,
+    binding->target.group,
+    binding->target.output
+  };
+
+  ret = IMP_System_Bind(&source, &target);
+  if (ret < 0) {
+    log_error("Error binding frame source to encoder group");
+    exit(-1);
+  }
+  log_info("Success binding source to target");
+
+}
+
+int load_bindings(cJSON *json, CameraConfig *camera_config)
+{
+  int i;
+  cJSON *json_stream;
+  cJSON *json_bindings;
+
+  log_info("Loading bindings");
+
+  // Parse bindings
+  json_bindings = cJSON_GetObjectItemCaseSensitive(json, "bindings");
+  if (json_bindings == NULL) {
+    log_error("Key 'bindings' not found in JSON.");
+    return -1;
+  }
+  camera_config->num_bindings = cJSON_GetArraySize(json_bindings);
+  log_info("Found %d bindings.", camera_config->num_bindings);
+
+  for (i = 0; i < camera_config->num_bindings; ++i) {
+    json_stream = cJSON_DetachItemFromArray(json_bindings, 0);
+    
+    if( populate_binding(&camera_config->bindings[i], json_stream) != 0) {
+      log_error("Error parsing num_bindings[%d].", i);
+      cJSON_Delete(json_stream);
+      return -1;
+    }
+    print_binding(&camera_config->bindings[i]);
+    setup_binding(&camera_config->bindings[i]);
+    cJSON_Delete(json_stream);
+  }
+}
+
+
+void load_configuration(cJSON *json, CameraConfig *camera_config)
+{
+  load_framesources(json, camera_config);
+  load_encoders(json, camera_config);
+  load_bindings(json, camera_config);
+}
+
+
+
+int find_framesource_by_id(FrameSource frame_sources[], int num_framesources, int id)
+{
+  int i;
+  for (i = 0; i < num_framesources; i++) {
+    if (frame_sources[i].id == id) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+void start_frame_producer_threads(CameraConfig *camera_config)
+{
+  int ret, i;
+  pthread_t thread_ids[MAX_ENCODERS];
+  EncoderThreadParams encoder_thread_params[MAX_ENCODERS];
+
+
+  log_info("Starting frame producer threads for each encoder");
+
+  for (i = 0; i < camera_config->num_encoders; i++) {
+    log_info("Creating thread for encoder[%d]", i);
+
+    encoder_thread_params[i].encoder  = &camera_config->encoders[i];
+
+    ret = pthread_create(&thread_ids[i], NULL, produce_frames, &encoder_thread_params[i]);
+
+    if (ret < 0) {
+      log_error("Error creating thread for encoder[%d].", i);
+    }
+
+    log_info("Thread %d started.", thread_ids[i]);
+    sleep(2);
+  }
+
+  for (i = 0; i < camera_config->num_encoders; i++) {
+    log_info("Waiting for thread %d to finish.", thread_ids[i]);
+    pthread_join(thread_ids[i], NULL);
+  }
+}
+
+int enable_framesources(CameraConfig *camera_config)
+{
+  int ret, i;
+
+  for (i = 0; i < camera_config->num_framesources; ++i) {
+
+    ret = IMP_FrameSource_EnableChn(camera_config->frame_sources[i].id);
+
+    if (ret < 0) {
+      log_error("IMP_FrameSource_EnableChn(%d) error: %d", camera_config->frame_sources[i].id, ret);
+      exit(-1);
+    }
+    log_info("Enabled FrameSource with id %d", camera_config->frame_sources[i].id);
+  }
+
+}
 
 void lock_callback(bool lock, void* udata) {
   pthread_mutex_t *LOCK = (pthread_mutex_t*)(udata);
@@ -159,13 +316,11 @@ void lock_callback(bool lock, void* udata) {
     pthread_mutex_unlock(LOCK);
 }
 
-// TODO: Possible refactoring methods
-// Parsing JSON file
-
-
 
 int main(int argc, const char *argv[])
 {
+  CameraConfig camera_config;
+
   int i, ret;
   char *r;
   IMPSensorInfo sensor_info;
@@ -181,11 +336,20 @@ int main(int argc, const char *argv[])
 
   cJSON *json_stream_settings;
   cJSON *json_stream;
+  cJSON *json_framesources;
+  cJSON *json_encoders;
+
 
   cJSON *settings;
 
-  int num_stream_settings;
-  StreamSettings stream_settings[MAX_STREAMS];
+
+  int num_framesources;
+  FrameSource frame_sources[MAX_FRAMESOURCES];
+  IMPFSChnAttr frame_source_attributes[MAX_FRAMESOURCES];
+
+  int num_encoders;
+  EncoderSetting encoders[MAX_ENCODERS];
+
 
 
   if (argc != 2) {
@@ -199,8 +363,6 @@ int main(int argc, const char *argv[])
   // Configure logging
   log_set_level(LOG_INFO);
   log_set_lock(lock_callback, &log_mutex);
-
-
 
 
   // Reading the JSON file into memory  
@@ -240,6 +402,10 @@ int main(int argc, const char *argv[])
   fclose(fp);
 
 
+  initialize_sensor(&sensor_info);
+  initialize_audio();
+
+
   // Parsing the JSON file
   json = cJSON_ParseWithLength(file_contents, file_size);
   if (json == NULL) {
@@ -256,30 +422,9 @@ int main(int argc, const char *argv[])
   }
 
 
-  json_stream_settings = cJSON_GetObjectItemCaseSensitive(json, "stream_settings");
-  if (json_stream_settings == NULL) {
-    log_error("Key 'stream_settings' not found in JSON.");
-    return -1;
-  }
+  load_configuration(json, &camera_config);
 
-  num_stream_settings = cJSON_GetArraySize(json_stream_settings);
-  log_info("Found %d stream settings elements in JSON.", num_stream_settings);
-
-
-  for (i = 0; i < num_stream_settings; ++i) {
-    json_stream = cJSON_DetachItemFromArray(json_stream_settings, 0);
-    
-    if( populate_stream_settings(&stream_settings[i], json_stream) != 0) {
-      cJSON_Delete(json_stream);
-      return -1;
-    }
-
-    cJSON_Delete(json_stream);
-  }
-
-
-  initialize_sensor(&sensor_info);
-  initialize_audio();
+  enable_framesources(&camera_config);
 
 
   if (pthread_mutex_init(&frame_generator_mutex, NULL) != 0) { 
@@ -287,9 +432,11 @@ int main(int argc, const char *argv[])
     return -1;
   } 
 
+  IMP_ISP_Tuning_SetSharpness(50);
+
 
   // This will suspend the main thread until the streams quit
-  start_frame_producer_threads(stream_settings, num_stream_settings);
+  start_frame_producer_threads(&camera_config);
 
 
   // Resume execution
@@ -306,5 +453,4 @@ err:
 
   return 0;
 }
-
 
