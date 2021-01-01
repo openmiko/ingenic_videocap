@@ -1,3 +1,6 @@
+#define _GNU_SOURCE
+
+#include "log.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/videodev2.h>
@@ -9,7 +12,6 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <stdlib.h>
-#include "log.h"
 
 uint8_t *buffer;
 
@@ -234,24 +236,24 @@ int main(int argc, char *argv[])
   // Configure logging
   switch (verbosity_level) {
     case 0:
-      log_set_level(LOG_FATAL);
+      log_set_level(LOGC_FATAL);
     case 1:
-      log_set_level(LOG_ERROR);
+      log_set_level(LOGC_ERROR);
       break;
     case 2:
-      log_set_level(LOG_WARN);
+      log_set_level(LOGC_WARN);
       break;
     case 3:
-      log_set_level(LOG_INFO);
+      log_set_level(LOGC_INFO);
       break;
     case 4:
-      log_set_level(LOG_DEBUG);
+      log_set_level(LOGC_DEBUG);
       break;
     case 5:
-      log_set_level(LOG_TRACE);
+      log_set_level(LOGC_TRACE);
       break;
     default:
-      log_set_level(LOG_INFO);
+      log_set_level(LOGC_INFO);
   }  
 
   log_info("Opening v4l2_device: %s\n", v4l2_device);

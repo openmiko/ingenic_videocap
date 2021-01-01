@@ -22,6 +22,9 @@
 #include <imp_isp.h>
 #include <imp_system.h>
 #include <imp_encoder.h>
+#include <imp/imp_ivs.h>
+#include <imp/imp_ivs_move.h>
+
 #include <linux/videodev2.h>
 #include <h264_stream.h>
 #include <cJSON.h>

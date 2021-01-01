@@ -81,6 +81,13 @@ static void file_callback(log_Event *ev) {
   fflush(ev->udata);
 }
 
+static void syslog_callback(log_Event *ev) {
+  int syslog_level = logc_to_syslog_level(ev->level);
+  char buf[512];
+
+  vsprintf(buf, ev->fmt, ev->ap);
+  syslog (syslog_level, "%d: %s", pthread_self(), buf);
+}
 
 static void lock(void)   {
   if (L.lock) { L.lock(true, L.udata); }
@@ -100,6 +107,39 @@ const char* log_level_string(int level) {
 void log_set_lock(log_LockFn fn, void *udata) {
   L.lock = fn;
   L.udata = udata;
+}
+
+int logc_to_syslog_level(int syslog_level) {
+  switch(syslog_level) {
+    case LOG_EMERG:
+    case LOG_ALERT:
+    case LOG_CRIT:
+      return LOGC_FATAL;
+      break;
+    case LOG_ERR:
+      return LOGC_ERROR;
+      break;
+    case LOG_WARNING:
+      return LOGC_WARN;
+      break;
+    case LOG_NOTICE:
+    case LOG_INFO:
+      return LOGC_INFO;
+      break;
+    case LOG_DEBUG:
+      return LOGC_DEBUG;
+      break;
+    default:
+      return LOGC_DEBUG;    
+  }
+}
+
+
+void log_init_syslog() {
+  int syslog_level = logc_to_syslog_level(L.level);
+  setlogmask (LOG_UPTO (syslog_level));
+  openlog ("videocapture", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
+  log_add_callback(syslog_callback, NULL, L.level);
 }
 
 

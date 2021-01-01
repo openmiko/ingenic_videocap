@@ -139,6 +139,10 @@ int device_name_to_id(char* name) {
   if(strcmp(name, "DEV_ID_ENC") == 0) {
     device_id = DEV_ID_ENC;
   }
+  if(strcmp(name, "DEV_ID_IVS") == 0) {
+    device_id = DEV_ID_IVS;
+  }
+
   return device_id;
 }
 
@@ -149,6 +153,9 @@ void device_id_to_string(int device_id, char *dest, int buffer_size)
   }
   else if (device_id == DEV_ID_ENC) {
     snprintf(dest, buffer_size, "DEV_ID_ENC");
+  }
+  else if (device_id == DEV_ID_IVS) {
+    snprintf(dest, buffer_size, "DEV_ID_IVS");
   }
   else {
     snprintf(dest, buffer_size, "UNKNOWN DEVICE ID");

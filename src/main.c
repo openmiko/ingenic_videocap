@@ -46,7 +46,7 @@ void setup_framesource(FrameSource *framesource)
 
 
   // Each framesource is identified by a channel ID.
-  // Each framsource also has 2 outputs (this is probably the actual hardware)
+  // Each framesource also has 2 outputs based on the underlying hardware
 
   ret = IMP_FrameSource_CreateChn(framesource->id, fs_chn_attr);
   if(ret < 0){
@@ -361,9 +361,10 @@ int main(int argc, const char *argv[])
 
 
   // Configure logging
-  log_set_level(LOG_INFO);
+  log_set_level(LOGC_INFO);
   log_set_lock(lock_callback, &log_mutex);
-
+  log_init_syslog();
+  
 
   // Reading the JSON file into memory  
   r = strcpy(filename, argv[1]);
@@ -422,6 +423,12 @@ int main(int argc, const char *argv[])
   }
 
 
+  ret = IMP_IVS_CreateGroup(0);
+  if (ret < 0) {
+    log_error("IMP_IVS_CreateGroup failed.");
+    return -1;
+  }
+
   load_configuration(json, &camera_config);
 
   enable_framesources(&camera_config);
@@ -432,7 +439,9 @@ int main(int argc, const char *argv[])
     return -1;
   } 
 
+  
   IMP_ISP_Tuning_SetSharpness(50);
+
 
 
   // This will suspend the main thread until the streams quit
@@ -454,3 +463,66 @@ err:
   return 0;
 }
 
+
+// static int sample_ivs_move_start(int grp_num, int chn_num, IMPIVSInterface **interface)
+// {
+//   int ret = 0;
+//   IMP_IVS_MoveParam param;
+//   int i = 0, j = 0;
+
+//   memset(&param, 0, sizeof(IMP_IVS_MoveParam));
+//   param.skipFrameCnt = 5;
+//   param.frameInfo.width = SENSOR_WIDTH_SECOND;
+//   param.frameInfo.height = SENSOR_HEIGHT_SECOND;
+//   param.roiRectCnt = 4;
+
+//   for(i=0; i<param.roiRectCnt; i++){
+//     param.sense[i] = 4;
+//   }
+
+//   /* printf("param.sense=%d, param.skipFrameCnt=%d, param.frameInfo.width=%d, param.frameInfo.height=%d\n", param.sense, param.skipFrameCnt, param.frameInfo.width, param.frameInfo.height); */
+//   for (j = 0; j < 2; j++) {
+//     for (i = 0; i < 2; i++) {
+//       if((i==0)&&(j==0)){
+//       param.roiRect[j * 2 + i].p0.x = i * param.frameInfo.width /* / 2 */;
+//       param.roiRect[j * 2 + i].p0.y = j * param.frameInfo.height /* / 2 */;
+//       param.roiRect[j * 2 + i].p1.x = (i + 1) * param.frameInfo.width /* / 2 */ - 1;
+//       param.roiRect[j * 2 + i].p1.y = (j + 1) * param.frameInfo.height /* / 2 */ - 1;
+//       printf("(%d,%d) = ((%d,%d)-(%d,%d))\n", i, j, param.roiRect[j * 2 + i].p0.x, param.roiRect[j * 2 + i].p0.y,param.roiRect[j * 2 + i].p1.x, param.roiRect[j * 2 + i].p1.y);
+//       }
+//       else
+//         {
+//             param.roiRect[j * 2 + i].p0.x = param.roiRect[0].p0.x;
+//       param.roiRect[j * 2 + i].p0.y = param.roiRect[0].p0.y;
+//       param.roiRect[j * 2 + i].p1.x = param.roiRect[0].p1.x;;
+//       param.roiRect[j * 2 + i].p1.y = param.roiRect[0].p1.y;;
+//       printf("(%d,%d) = ((%d,%d)-(%d,%d))\n", i, j, param.roiRect[j * 2 + i].p0.x, param.roiRect[j * 2 + i].p0.y,param.roiRect[j * 2 + i].p1.x, param.roiRect[j * 2 + i].p1.y);
+//         }
+//     }
+//   }
+//   *interface = IMP_IVS_CreateMoveInterface(&param);
+//   if (*interface == NULL) {
+//     IMP_LOG_ERR(TAG, "IMP_IVS_CreateGroup(%d) failed\n", grp_num);
+//     return -1;
+//   }
+
+//   ret = IMP_IVS_CreateChn(chn_num, *interface);
+//   if (ret < 0) {
+//     IMP_LOG_ERR(TAG, "IMP_IVS_CreateChn(%d) failed\n", chn_num);
+//     return -1;
+//   }
+
+//   ret = IMP_IVS_RegisterChn(grp_num, chn_num);
+//   if (ret < 0) {
+//     IMP_LOG_ERR(TAG, "IMP_IVS_RegisterChn(%d, %d) failed\n", grp_num, chn_num);
+//     return -1;
+//   }
+
+//   ret = IMP_IVS_StartRecvPic(chn_num);
+//   if (ret < 0) {
+//     IMP_LOG_ERR(TAG, "IMP_IVS_StartRecvPic(%d) failed\n", chn_num);
+//     return -1;
+//   }
+
+//   return 0;
+// }
