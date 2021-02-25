@@ -365,19 +365,14 @@ void start_frame_producer_threads(CameraConfig *camera_config)
 
     encoder_thread_params[i].encoder  = &camera_config->encoders[i];
 
-    ret = pthread_create(&thread_ids[i], NULL, produce_frames, &encoder_thread_params[i]);
+    ret = pthread_create(&camera_config->encoders[i].thread_id, NULL, produce_frames, &encoder_thread_params[i]);
 
     if (ret < 0) {
       log_error("Error creating thread for encoder[%d].", i);
     }
 
-    log_info("Thread %d started.", thread_ids[i]);
+    log_info("Thread %d started.", camera_config->encoders[i].thread_id);
     sleep(2);
-  }
-
-  for (i = 0; i < camera_config->num_encoders; i++) {
-    log_info("Waiting for thread %d to finish.", thread_ids[i]);
-    pthread_join(thread_ids[i], NULL);
   }
 }
 
@@ -584,18 +579,14 @@ int main(int argc, const char *argv[])
   
 	// ----
   
-	// Wait for OSD threads to finish
+	
+	// Wait for frame producer threads to finish
 	for (i = 0; i < camera_config->num_encoders; i++) {
-		log_info("Waiting for OSD thread %d to finish.", camera_config->encoders[i].thread_id);
+		log_info("Waiting for frame producer thread %d to finish.", camera_config->encoders[i].thread_id);
 		pthread_join(camera_config->encoders[i].thread_id, NULL);
 	}
-	
-	// Wait for ISP configuration thread to finish
-	log_info("Waiting for thread %d to finish.", camera_config->isp_settings.thread_id);
-	sem_post(&camera_config->isp_settings.semaphore);
-	pthread_join(camera_config->isp_settings.thread_id, NULL);
 
-	// Wait for frame producer threads to finish
+	// Wait for OSD threads to finish
 	int igrp, iosd;
 	for (igrp = 0; igrp < camera_config->num_osd_groups; igrp++) {
 		OsdGroup *osd_group = &camera_config->osd_groups[igrp];
@@ -603,10 +594,15 @@ int main(int argc, const char *argv[])
 		for (iosd = 0; iosd < osd_group->osd_list_size; iosd++) {
 			OsdItem *osd_item = &osd_group->osd_list[iosd];
 			
-			log_info("Waiting for frame producer thread %d to finish.", osd_item->thread_id);
+			log_info("Waiting for OSD thread %d to finish.", osd_item->thread_id);
 			pthread_join(osd_item->thread_id, NULL);
 		}
 	}
+	
+	// Wait for ISP configuration thread to finish
+	log_info("Waiting for ISP settings thread %d to finish.", camera_config->isp_settings.thread_id);
+	sem_post(&camera_config->isp_settings.semaphore);
+	pthread_join(camera_config->isp_settings.thread_id, NULL);
 
   // Resume execution
   log_info("All threads completed. Cleaning up.");
