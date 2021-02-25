@@ -28,18 +28,21 @@ include_directories(${CMAKE_FIND_ROOT_PATH}/usr/include/h264bitstream)
 file(GLOB VIDEOCAPTURE_SRC_FILES "src/*.c")
 list(REMOVE_ITEM VIDEOCAPTURE_SRC_FILES "${CMAKE_SOURCE_DIR}/src/autonight.c")
 list(REMOVE_ITEM VIDEOCAPTURE_SRC_FILES "${CMAKE_SOURCE_DIR}/src/getimage.c")
+list(REMOVE_ITEM VIDEOCAPTURE_SRC_FILES "${CMAKE_SOURCE_DIR}/src/videoconfig.c")
 
 
 # autonight source files
 set(AUTONIGHT_SRC_FILES "src/autonight.c")
-
 # getimage source files
 set(GETIMAGE_SRC_FILES "src/getimage.c" "src/log.c")
+# videoconfig source files
+set(VIDEOCONFIG_SRC_FILES "src/videoconfig.c")
 
 
 message(STATUS "Source files for videocapture binary: ${VIDEOCAPTURE_SRC_FILES}")
 message(STATUS "Source files for autonight binary: ${AUTONIGHT_SRC_FILES}")
 message(STATUS "Source files for getimage binary: ${GETIMAGE_SRC_FILES}")
+message(STATUS "Source files for videoconfig binary: ${VIDEOCONFIG_SRC_FILES}")
 
 
 ######################
@@ -49,7 +52,7 @@ message(STATUS "Source files for getimage binary: ${GETIMAGE_SRC_FILES}")
 add_executable(videocapture ${VIDEOCAPTURE_SRC_FILES})
 add_executable(autonight ${AUTONIGHT_SRC_FILES})
 add_executable(getimage ${GETIMAGE_SRC_FILES})
-
+add_executable(videoconfig ${VIDEOCONFIG_SRC_FILES})
 
 #########################
 # Linking Configuration #
@@ -76,12 +79,13 @@ target_link_libraries(videocapture ${CMAKE_SOURCE_DIR}/lib/libimp.so )
 target_link_libraries(videocapture ${CMAKE_SOURCE_DIR}/lib/libsysutils.so )
 target_link_libraries(videocapture ${CMAKE_SOURCE_DIR}/lib/libalog.so )
 
-
 target_link_libraries(videocapture ${CMAKE_FIND_ROOT_PATH}/usr/lib/libh264bitstream.so )
+
+target_link_libraries(videocapture pthread )
+target_link_libraries(videoconfig pthread )
 
 # Link libraries used by getimage
 target_link_libraries(getimage ${CMAKE_FIND_ROOT_PATH}/usr/lib/libh264bitstream.so )
-
 
 message(STATUS "CMAKE_THREAD_LIBS_INIT: ${CMAKE_THREAD_LIBS_INIT}")
 
@@ -92,3 +96,4 @@ set_property(TARGET getimage PROPERTY C_STANDARD 99)
 install(TARGETS videocapture DESTINATION bin)
 install(TARGETS autonight DESTINATION bin)
 install(TARGETS getimage DESTINATION bin)
+install(TARGETS videoconfig DESTINATION bin)

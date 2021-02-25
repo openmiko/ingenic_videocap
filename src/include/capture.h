@@ -24,6 +24,7 @@
 #include <imp_encoder.h>
 #include <imp/imp_ivs.h>
 #include <imp/imp_ivs_move.h>
+#include <imp/imp_utils.h>
 
 #include <linux/videodev2.h>
 #include <h264_stream.h>
@@ -63,5 +64,14 @@ void *produce_frames(void *ptr);
 void print_stream_settings(StreamSettings *stream_settings);
 void print_channel_attributes(IMPFSChnAttr *attr);
 void print_encoder_channel_attributes(IMPEncoderCHNAttr *attr);
+
+void *isp_settings_thread(void *isp_settings_);
+void start_osd_update_threads(CameraConfig *camera_config);
+void reload_night_vision(ISPSettings *isp_settings);
+void reload_flip_image(ISPSettings *isp_settings);
+void reload_encoder_config(EncoderSetting *encoder_setting);
+
+// don't know why it doesn't work normally with the library....
+char* itoa(int val, int base);
 
 #endif /* CAPTURE_H */

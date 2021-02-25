@@ -1,4 +1,6 @@
 #include "capture.h"
+#include "fontmap.h"
+#include "fontmapbig.h"
 
 /*
 
@@ -320,13 +322,13 @@ int setup_encoding_engine(FrameSource* frame_source, EncoderSetting *encoder_set
   rc_attr->attrH264Vbr.maxQp = encoder_setting->max_qp;
   rc_attr->attrH264Vbr.minQp = encoder_setting->min_qp;
   
-  // rc_attr->attrH264Vbr.staticTime = stream_settings->statistics_interval;
-  // rc_attr->attrH264Vbr.maxBitRate = stream_settings->max_bitrate;
-  // rc_attr->attrH264Vbr.changePos = stream_settings->change_pos;
+  rc_attr->attrH264Vbr.staticTime = encoder_setting->h264vbr.statistics_interval;
+  rc_attr->attrH264Vbr.maxBitRate = encoder_setting->h264vbr.max_bitrate;
+  rc_attr->attrH264Vbr.changePos = encoder_setting->h264vbr.change_pos;
 
-  rc_attr->attrH264Vbr.staticTime = 1;
-  rc_attr->attrH264Vbr.maxBitRate = 500;
-  rc_attr->attrH264Vbr.changePos = 50;
+  //rc_attr->attrH264Vbr.staticTime = 1;
+  //rc_attr->attrH264Vbr.maxBitRate = 500;
+  //rc_attr->attrH264Vbr.changePos = 50;
 
 
   rc_attr->attrH264Vbr.FrmQPStep = encoder_setting->frame_qp_step;
@@ -355,6 +357,385 @@ int setup_encoding_engine(FrameSource* frame_source, EncoderSetting *encoder_set
 
   return 0;
 
+}
+
+// OSD
+void *osd_update_thread(void *p) {
+	OsdThreadData *osdThreadData = (OsdThreadData*) p;
+	
+	OsdGroup *osd_group = osdThreadData->osd_group;
+	OsdItem *osd_item = osdThreadData->osd_item;
+	
+	uint32_t *pixel_matrix = (uint32_t *) malloc(osd_item->size_y * osd_item->size_x * 4);
+	
+	IMPOSDRgnAttrData r_attr_data;
+	int ret, i, u, left, top;
+	time_t curr_time;
+	struct tm *curr_date;
+	FILE *f;
+	
+	uint32_t *pixel;
+	char text[128] = "";
+	char osd_text_param[64] = "";
+	bitmapinfo_t *fontmap;
+	int font_height = 0;
+	int space_char_size = 0;
+	//int max_font_width = 0;
+	bitmapinfo_t *font_char_data;
+	void *font_char;
+	int font_width, font_width_bytes;
+	int offset_left = 0;
+	int offset_top = 0;
+	int font_char_offset = 0;
+	int fix_smearing;
+	
+	// 'fps' counter (vars used to reset the counter back to 1 when the date 'seconds' digit changes)
+	int osd_num_counter = 0;
+	int setting_value = 0;
+	char datetime_str[64] = "";
+	char datetime_str2[64] = "";
+	time_t curr_time_counter;
+	struct tm *curr_date_counter;
+	
+	time(&curr_time_counter);
+	curr_date_counter = localtime(&curr_time_counter);
+	
+	pthread_mutexattr_t mutex_attr;
+	pthread_mutexattr_setpshared(&mutex_attr, PTHREAD_PROCESS_SHARED);
+	ret = pthread_mutex_init(&osd_item->mutexWrite, &mutex_attr);
+	if (ret != 0) {
+		log_error("pthread_mutex_init error (osd_id %d)", osd_item->osd_id);
+		return NULL;
+	}
+	
+	pthread_mutexattr_t mutex_attr2;
+	pthread_mutexattr_setpshared(&mutex_attr2, PTHREAD_PROCESS_SHARED);
+	ret = pthread_mutex_init(&osd_item->mutexRead, &mutex_attr2);
+	if (ret != 0) {
+		log_error("pthread_mutex_init error (osd_id %d)", osd_item->osd_id);
+		return NULL;
+	}
+	
+	osd_item->reload_flag = 1;
+	
+	while (!sigint_received) {
+		pthread_mutex_unlock(&osd_item->mutexRead);
+		pthread_mutex_lock(&osd_item->mutexWrite);
+		
+		if (osd_item->reload_flag == 1) {
+			IMPOSDRgnAttr rAttrTmp;
+			memset(&rAttrTmp, 0, sizeof(IMPOSDRgnAttr));
+			rAttrTmp.type = osd_area_type_to_int(osd_item->type);
+			rAttrTmp.rect.p0.x = osd_item->pos_x;
+			rAttrTmp.rect.p0.y = osd_item->pos_y;
+			rAttrTmp.rect.p1.x = rAttrTmp.rect.p0.x + osd_item->size_x - 1;
+			rAttrTmp.rect.p1.y = rAttrTmp.rect.p0.y + osd_item->size_y - 1;
+			rAttrTmp.fmt = pixel_format_to_int(osd_item->format);
+			rAttrTmp.data.picData.pData = NULL;
+			
+			if (rAttrTmp.type == OSD_REG_COVER) {
+				rAttrTmp.data.coverData.color = get_osd_color_from_string(osd_item->primary_color);
+			}
+			else if (rAttrTmp.type == OSD_REG_RECT) {
+				rAttrTmp.data.lineRectData.color = get_osd_color_from_string(osd_item->primary_color);
+				rAttrTmp.data.lineRectData.linewidth = osd_item->line_width;
+			}
+			
+			ret = IMP_OSD_SetRgnAttr(osd_item->rgn_hander, &rAttrTmp);
+			if (ret < 0) {
+				log_error("IMP_OSD_SetRgnAttr error! (group_id: %d, osd_id: %d)", osd_group->group_id, osd_item->osd_id);
+			}
+			
+			// ---
+			
+			IMPOSDGrpRgnAttr grAttrTmp;
+			if (IMP_OSD_GetGrpRgnAttr(osd_item->rgn_hander, osd_group->group_id, &grAttrTmp) < 0) {
+				log_error("IMP_OSD_GetGrpRgnAttr error! (group_id: %d, osd_id: %d)", osd_group->group_id, osd_item->osd_id);
+				return NULL;
+			}
+			
+			memset(&grAttrTmp, 0, sizeof(IMPOSDGrpRgnAttr));
+			grAttrTmp.show = osd_item->show;
+			grAttrTmp.layer = osd_item->layer;
+			grAttrTmp.gAlphaEn = osd_item->g_alpha_en;
+			grAttrTmp.fgAlhpa = (int) strtol(osd_item->fg_alhpa, NULL, 0);
+			grAttrTmp.bgAlhpa = (int) strtol(osd_item->bg_alhpa, NULL, 0);
+			
+			if (rAttrTmp.type == OSD_REG_RECT) {
+				grAttrTmp.scalex = 1;
+				grAttrTmp.scaley = 1;
+			}
+			
+			if (IMP_OSD_SetGrpRgnAttr(osd_item->rgn_hander, osd_group->group_id, &grAttrTmp) < 0) {
+				log_error("IMP_OSD_SetGrpRgnAttr error! (group_id: %d, osd_id: %d)", osd_group->group_id, osd_item->osd_id);
+				return NULL;
+			}
+			
+			// ---
+			
+			// show/hide osd... already done above
+			/*ret = IMP_OSD_ShowRgn(osd_item->osd_id, osd_group->group_id, osd_item->show);
+			if (ret != 0) {
+				log_error("IMP_OSD_ShowRgn() error! (group_id: %d, osd_id: %d)", osd_group->group_id, osd_item->osd_id);
+				return NULL;
+			}*/
+			
+			if (strcmp(osd_item->font, "default") == 0) {
+				fontmap = gBgramap;
+				font_height = CHARHEIGHT;
+			} else if (strcmp(osd_item->font, "default_big") == 0) {
+				fontmap = gBgramapBig;
+				font_height = CHARHEIGHT_BIG;
+			} //else ...(add fonts here...)
+				
+			space_char_size = SPACELENGHT * 4;
+			//max_font_width = fontmap['W' - STARTCHAR].width; // if needed
+		}
+		
+		if (strcmp(osd_item->osd_type, "text") == 0) {
+			if (strncmp(osd_item->text, "#DATETIME=", 10) == 0) {
+				time(&curr_time);
+				curr_date = localtime(&curr_time);
+				
+				for (i = 10; i < 64+10 && osd_item->text[i] != '#'; i++) {
+					osd_text_param[i-10] = osd_item->text[i];
+				}
+				osd_text_param[i-10] = '\0';
+				
+				strftime(text, 32, osd_text_param, curr_date);
+			}
+			else if (strncmp(osd_item->text, "#COUNTER=", 8) == 0) {
+				osd_num_counter++;
+				
+				for (i = 9; i < 64+9 && osd_item->text[i] != '#'; i++) {
+					osd_text_param[i-9] = osd_item->text[i];
+				}
+				osd_text_param[i-9] = '\0';
+				
+				setting_value = atoi(osd_text_param);
+				
+				strftime(datetime_str, 32, "%S", curr_date_counter);
+				time(&curr_time_counter);
+				curr_date_counter = localtime(&curr_time_counter);
+				strftime(datetime_str2, 32, "%S", curr_date_counter);
+				
+				if (osd_num_counter > setting_value || strcmp(datetime_str, datetime_str2) != 0) {
+					osd_num_counter = 1;
+				}
+				
+				snprintf(text, sizeof(text), "%d",  osd_num_counter);
+			}
+			else if (strcmp(osd_item->text, "#HOSTNAME#") == 0) {				
+				ret = gethostname(text, sizeof(text));
+				if (ret != 0) {
+					strcpy(text, "ERROR");
+				}
+				
+				/*f = fopen("/etc/hostname", "r");
+				if (f != NULL) {
+					fscanf(f, "%s", text);
+					fclose(f);
+				}*/
+			}
+			else if (strcmp(text, osd_item->text) != 0) {
+				strcpy(text, osd_item->text);
+			}
+			
+			text[127] = '\0';
+			
+			offset_left = osd_item->left_right_padding;
+			offset_top = osd_item->top_bottom_padding;
+			font_char_offset = 0;
+			
+			if (strcmp(osd_item->secondary_color, "none") == 0) {
+				// set all pixels to 0 (transparent) **
+				memset(pixel_matrix, 0, osd_item->size_y * osd_item->size_x * 4);
+			}
+			else {
+				// or set background color **
+				for (i = 0; i < osd_item->size_y * osd_item->size_x; i++) {
+					((uint32_t *) pixel_matrix)[i] = get_osd_color_from_string(osd_item->secondary_color);
+				}
+			}
+			
+			for (i = 0; text[i] != '\0'; i++) {
+				if (text[i] == ' ') {
+					offset_left += space_char_size + osd_item->extra_space_char_size;
+					continue;
+				}
+				else if (text[i] == '\n') {
+					offset_top += font_height + osd_item->line_spacing;
+					offset_left = osd_item->left_right_padding;
+					continue;
+				}
+				else if (text[i] == '\t') {
+					offset_left += (space_char_size + osd_item->extra_space_char_size) * 4;
+					continue;
+				}
+				// check if character exists in font
+				else if (text[i] < STARTCHAR || text[i] > ENDCHAR)
+					text[i] = '?';
+				
+				// get font character data and details
+ 				font_char_data = &fontmap[text[i] - STARTCHAR];
+				font_char = (void *) font_char_data->pdata;
+				font_width = font_char_data->width;
+				font_width_bytes = font_char_data->widthInByte * 8;
+				
+				// line break if new character doesn't fit on the right end
+				if (offset_left + font_width + osd_item->left_right_padding > osd_item->size_x) {
+					offset_top += font_height + osd_item->line_spacing;
+					offset_left = osd_item->left_right_padding;
+				}
+				
+				// calculate offset to center character
+				if (osd_item->fixed_font_width != 0) {
+					font_char_offset = (int) ((osd_item->fixed_font_width - font_width) / 2);
+				}
+				
+				// go through font character bytes horizontaly
+				for (left = 0; left < font_width; left++) {
+					// useless..
+					//if (left + offsetLeft + osd_item->leftRightPadding >= osd_item->size_x) break;
+					
+					// go through font character bytes verticaly
+					for (top = 0; top < font_height; top++) {
+						// cut character verticaly if it doesn't fit
+						if (top + offset_top + osd_item->top_bottom_padding >= osd_item->size_y) break;
+						
+						// if osd_item->size_x is an odd number some smearing occurs..
+						// couldn't find the problem source, so....
+						fix_smearing = 0;
+						if (osd_item->size_x % 2 != 0 && (top + offset_top) % 2 != 0)
+							fix_smearing = 1;
+						
+						// up/down: (top + offsetTop) * osd_item->size_x
+						// left/right: left + offsetLeft + fontCharOffset - fixSmearing
+						pixel = &pixel_matrix[(top + offset_top) * osd_item->size_x + left + offset_left + font_char_offset - fix_smearing];
+						
+						// if pixel is from the font character
+						if (((uint32_t *) font_char)[(top * font_width_bytes) + left]) {
+							// set pixel color
+							*pixel = get_osd_color_from_string(osd_item->primary_color);
+						}
+						//else {
+							// set pixel transparent
+							// sometimes it doesn't clear old text, the memset/forloop above clears everything **
+							//*pixel = get_osd_color_from_string(osd_item->secondary_color);
+						//}
+					}
+				}
+				
+				if (osd_item->fixed_font_width == 0)
+					offset_left += font_width + osd_item->letter_spacing;
+				else
+					offset_left += osd_item->fixed_font_width + osd_item->letter_spacing;
+			}
+			
+			r_attr_data.picData.pData = pixel_matrix;
+			IMP_OSD_UpdateRgnAttrData(osd_item->osd_id, &r_attr_data);
+		}
+		else if (strcmp(osd_item->osd_type, "shape") == 0 || strcmp(osd_item->osd_type, "image") == 0) {
+			// convert png's to bgra
+			// eg: https://www.onlineconvert.com/
+			// maybe change everything to rgba or argb in the future...
+			
+			if (osd_item->reload_flag == 1) {
+				FILE *f = fopen(osd_item->image, "rb");
+				if (f != NULL) {
+					uint8_t *pixel_matrix_8bit = malloc(osd_item->size_x * osd_item->size_y * 4);
+					int image_loc = 0;
+					long f_lenght;
+					uint32_t primary_color, secondary_color;
+					primary_color = get_osd_color_from_string(osd_item->primary_color);
+					secondary_color = get_osd_color_from_string(osd_item->secondary_color);
+					
+					fseek(f, 0, SEEK_END);
+					f_lenght = ftell(f);
+					rewind(f);
+					
+					for(i = 0; i < f_lenght && i < osd_item->size_x * osd_item->size_y * 4; i++) {
+						fread(&pixel_matrix_8bit[image_loc++], 1, 1, f);
+					}
+
+					fclose(f);
+					
+					if (strcmp(osd_item->osd_type, "shape") == 0) {
+						i = 0;
+						do {
+							/*	change shape color based on transparency
+							 	afterthought: ...this 'if' is useless because everything transparent won't show up, dah
+								only needed to change the background color
+								but i'm not using it because if the shape has opacity arround it
+								it won't have background there and it i'll create an halo effect around it
+							*/
+							//if (pixel_matrix_8bit[i+3] != 0x00) {
+								pixel_matrix_8bit[i] = (uint8_t)primary_color;
+								pixel_matrix_8bit[i+1] = (uint8_t)(primary_color >> 8);
+								pixel_matrix_8bit[i+2] = (uint8_t)(primary_color >> 16);
+							//} else {
+								//pixel_matrix_8bit[i] = (uint8_t)secondary_color;
+								//pixel_matrix_8bit[i+1] = (uint8_t)(secondary_color >> 8);
+								//pixel_matrix_8bit[i+2] = (uint8_t)(secondary_color >> 16);
+								//pixel_matrix_8bit[i+3] = 0xff;
+							//}
+							
+							i += 4;
+						} while (i < osd_item->size_x * osd_item->size_y * 4);
+					}
+					
+					r_attr_data.picData.pData = pixel_matrix_8bit;
+					IMP_OSD_UpdateRgnAttrData(osd_item->osd_id, &r_attr_data);
+				}
+				else {
+					log_error("Could not open OSD image file '%s'! (group_id: %d, osd_id: %d)", osd_item->image, osd_group->group_id, osd_item->osd_id);
+				}
+			}
+		}
+		
+		if (osd_item->reload_flag == 1) osd_item->reload_flag = 0;
+		
+		if (osd_item->update_interval > 1)
+			usleep(1000 * osd_item->update_interval);
+		else
+			sleep(1);
+		
+		pthread_mutex_unlock(&osd_item->mutexWrite);
+		pthread_mutex_lock(&osd_item->mutexRead);
+	}
+	
+	free(pixel_matrix);
+	
+	pthread_mutex_destroy(&osd_item->mutexRead);
+	pthread_mutex_destroy(&osd_item->mutexWrite);
+
+	return NULL;
+}
+
+void start_osd_update_threads(CameraConfig *camera_config) {
+	int ret;
+	OsdThreadData osd_thread_data[MAX_OSDGROUPS][MAX_OSDITEMS];
+
+	for (int igrp = 0; igrp < camera_config->num_osd_groups; igrp++) {
+		OsdGroup *osd_group = &camera_config->osd_groups[igrp];
+		
+		for (int iosd = 0; iosd < osd_group->osd_list_size; iosd++) {
+			OsdItem *osd_item = &osd_group->osd_list[iosd];
+			
+			osd_thread_data[igrp][iosd].osd_group = osd_group;
+			osd_thread_data[igrp][iosd].osd_item = osd_item;
+
+			ret = pthread_create(&osd_item->thread_id, NULL, osd_update_thread, (void*) &osd_thread_data[igrp][iosd]);
+			if (ret) {
+				log_error("OSD: thread create error!");
+				return;
+			}
+			
+			log_info("OSD thread %d started.", osd_item->thread_id);
+		}
+	}
+	
+	sleep(2);
 }
 
 void print_channel_attributes(IMPFSChnAttr *attr)
@@ -490,6 +871,23 @@ int output_v4l2_frames(EncoderSetting *encoder_setting)
   struct timeval tval_before, tval_after, tval_result;
   float delay_in_seconds = 0;
 
+	encoder_setting->reload_flag = 0;
+	
+	pthread_mutexattr_t mutex_attr;
+	pthread_mutexattr_setpshared(&mutex_attr, PTHREAD_PROCESS_SHARED);
+	ret = pthread_mutex_init(&encoder_setting->mutexWrite, &mutex_attr);
+	if (ret != 0) {
+		log_error("pthread_mutex_init error (encoder channel %d)", encoder_setting->channel);
+		return -1;
+	}
+	
+	pthread_mutexattr_t mutex_attr2;
+	pthread_mutexattr_setpshared(&mutex_attr2, PTHREAD_PROCESS_SHARED);
+	ret = pthread_mutex_init(&encoder_setting->mutexRead, &mutex_attr2);
+	if (ret != 0) {
+		log_error("pthread_mutex_init error (encoder channel %d)", encoder_setting->channel);
+		return -1;
+	}
 
 
   struct v4l2_capability vid_caps;
@@ -592,7 +990,9 @@ int output_v4l2_frames(EncoderSetting *encoder_setting)
   gettimeofday(&tval_before, NULL);
 
   while(!sigint_received) {
-
+	pthread_mutex_unlock(&encoder_setting->mutexRead);
+	pthread_mutex_lock(&encoder_setting->mutexWrite);
+	
     // Audio Frames
 
     // int ret = IMP_AI_PollingFrame(audio_device_id, audio_channel_id, 1000);
@@ -658,6 +1058,8 @@ int output_v4l2_frames(EncoderSetting *encoder_setting)
     ret = IMP_Encoder_PollingStream(encoder_setting->channel, 1000);
     if (ret < 0) {
       log_error("Timeout while polling for stream on channel %d.", encoder_setting->channel);
+	  pthread_mutex_destroy(&encoder_setting->mutexRead);
+	  pthread_mutex_destroy(&encoder_setting->mutexWrite);
       continue;
     }
 
@@ -714,9 +1116,18 @@ int output_v4l2_frames(EncoderSetting *encoder_setting)
     frames_written = frames_written + 1;
 
     usleep(1000 * 1000 * delay_in_seconds);
-
+	
+	pthread_mutex_unlock(&encoder_setting->mutexWrite);
+	pthread_mutex_lock(&encoder_setting->mutexRead);
+	
+	if (encoder_setting->reload_flag == 1) {
+		reload_encoder_config(encoder_setting);
+		encoder_setting->reload_flag = 0;
+	}
   }
-
+  
+	pthread_mutex_destroy(&encoder_setting->mutexRead);
+	pthread_mutex_destroy(&encoder_setting->mutexWrite);
 
   ret = IMP_Encoder_StopRecvPic(encoder_setting->channel);
   if (ret < 0) {
@@ -725,6 +1136,35 @@ int output_v4l2_frames(EncoderSetting *encoder_setting)
   }
 
 
+}
+
+void *isp_settings_thread(void *isp_settings_) {
+	ISPSettings *isp_settings = (ISPSettings*) isp_settings_;
+	
+	int ret;
+	ret = sem_init(&isp_settings->semaphore, 1, 0);
+	if (ret < 0) {
+		log_error("sem_init failed on isp settings");
+		return NULL;
+	}
+	
+	while(!sigint_received) {		
+		if (isp_settings->night_mode_flag == 1) {
+			reload_night_vision(isp_settings);
+			isp_settings->night_mode_flag = 0;
+		}
+		
+		if (isp_settings->flip_image_flag == 1) {
+			reload_flip_image(isp_settings);
+			isp_settings->flip_image_flag = 0;
+		}
+		
+		usleep(1000 * 100); // can be removed, it's just a precaution
+		
+		sem_wait(&isp_settings->semaphore);
+	}
+	
+	sem_destroy(&isp_settings->semaphore);
 }
 
 int sensor_cleanup(IMPSensorInfo *sensor_info)
@@ -761,4 +1201,96 @@ int sensor_cleanup(IMPSensorInfo *sensor_info)
   log_info("Sensor cleanup success.");
 
   return 0;
+}
+
+void reload_night_vision(ISPSettings *isp_settings) {
+	int ret;
+	IMPISPRunningMode isprunningmode;
+	IMPISPSceneMode sceneMode;
+	IMPISPColorfxMode colormode;
+	
+	if (isp_settings->night_mode == 1) {
+		isprunningmode = IMPISP_RUNNING_MODE_NIGHT;
+		sceneMode = IMPISP_SCENE_MODE_NIGHT;
+		colormode = IMPISP_COLORFX_MODE_BW;
+	}
+	else {
+		isprunningmode = IMPISP_RUNNING_MODE_DAY;
+		sceneMode = IMPISP_SCENE_MODE_AUTO;
+		colormode = IMPISP_COLORFX_MODE_AUTO;
+	}
+	
+	ret = IMP_ISP_Tuning_SetISPRunningMode(isprunningmode);
+	if (ret) {
+		log_error("IMP_ISP_Tuning_SetISPRunningMode failed");
+	}
+	
+	ret = IMP_ISP_Tuning_SetSceneMode(sceneMode);
+	if (ret) {
+		log_error("IMP_ISP_Tuning_SetSceneMode failed");
+	}
+	
+	ret = IMP_ISP_Tuning_SetColorfxMode(colormode);
+	if (ret) {
+		log_error("IMP_ISP_Tuning_SetColorfxMode failed");
+	}
+	
+	log_info("Night mode updated. (%d)", isp_settings->night_mode);
+}
+
+void reload_flip_image(ISPSettings *isp_settings) {
+	int ret;
+	
+	IMPISPTuningOpsMode tuning_ops_mode;
+	tuning_ops_mode = IMPISP_TUNING_OPS_MODE_DISABLE;
+	
+	if (isp_settings->flip_image == 1)
+		tuning_ops_mode = IMPISP_TUNING_OPS_MODE_ENABLE;
+	
+	ret = IMP_ISP_Tuning_SetISPVflip(tuning_ops_mode);
+	if (ret) {
+		log_error("IMP_ISP_Tuning_SetISPVflip failed");
+	}
+	
+	ret = IMP_ISP_Tuning_SetISPHflip(tuning_ops_mode);
+	if (ret) {
+		log_error("IMP_ISP_Tuning_SetISPHflip failed");
+	}
+	
+	log_info("Flip image mode updated. (%d)", isp_settings->flip_image);
+}
+
+void reload_encoder_config(EncoderSetting *encoder_setting) {
+	IMPEncoderRcAttr rc_attr;
+	
+	IMP_Encoder_GetChnRcAttr(encoder_setting->channel, &rc_attr);
+	
+	rc_attr.attrH264Vbr.outFrmRate.frmRateNum = encoder_setting->frame_rate_numerator;
+	rc_attr.attrH264Vbr.outFrmRate.frmRateDen = encoder_setting->frame_rate_denominator;
+	rc_attr.attrH264Vbr.maxGop = encoder_setting->max_group_of_pictures;
+	rc_attr.attrH264Vbr.maxQp = encoder_setting->max_qp;
+	rc_attr.attrH264Vbr.minQp = encoder_setting->min_qp;
+	
+	rc_attr.attrH264Vbr.staticTime = encoder_setting->h264vbr.statistics_interval;
+	rc_attr.attrH264Vbr.maxBitRate = encoder_setting->h264vbr.max_bitrate;
+	rc_attr.attrH264Vbr.changePos = encoder_setting->h264vbr.change_pos;
+	
+	rc_attr.attrH264Vbr.FrmQPStep = encoder_setting->frame_qp_step;
+	rc_attr.attrH264Vbr.GOPQPStep = encoder_setting->gop_qp_step;
+	
+	//rc_attr.attrH264FrmUsed.enable = 1;
+	
+	IMP_Encoder_SetChnRcAttr(encoder_setting->channel, &rc_attr);
+	
+	log_info("Encoder attributes for channel %d changed.", encoder_setting->channel);
+}
+
+char* itoa(int val, int base) {
+	static char buf[32] = {0};
+	int i = 30;
+
+	for(; val && i ; --i, val /= base)
+		buf[i] = "0123456789abcdef"[val % base];
+
+	return &buf[i+1];
 }

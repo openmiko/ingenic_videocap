@@ -93,6 +93,30 @@ int setup_encoder(EncoderSetting *encoder_setting)
 }
 
 
+int load_isp_settings(cJSON *json, CameraConfig *camera_config) {
+	int i;
+	cJSON *json_stream;
+	cJSON *json_isp_settings;
+
+	log_info("Loading ISP settings");
+
+	// Parse framesources
+	json_isp_settings = cJSON_GetObjectItemCaseSensitive(json, "isp_settings");
+	if (json_isp_settings == NULL) {
+		log_error("Key 'isp_settings' not found in JSON.");
+		return -1;
+	}
+	
+	if (populate_isp_settings(&camera_config->isp_settings, json_isp_settings) != 0) {
+		log_error("Error parsing ISP settings.", i);
+		cJSON_Delete(json_stream);
+		return -1;
+	}
+	
+	print_isp_settings(&camera_config->isp_settings);
+	
+	cJSON_Delete(json_stream);
+}
 
 int load_framesources(cJSON *json, CameraConfig *camera_config)
 {
@@ -202,7 +226,7 @@ int setup_binding(Binding *binding)
 
   ret = IMP_System_Bind(&source, &target);
   if (ret < 0) {
-    log_error("Error binding frame source to encoder group");
+    log_error("Error binding frame source to target");
     exit(-1);
   }
   log_info("Success binding source to target");
@@ -241,10 +265,76 @@ int load_bindings(cJSON *json, CameraConfig *camera_config)
 }
 
 
+int setup_osd_group(OsdGroup *osd_group) {
+	if (IMP_OSD_CreateGroup(osd_group->group_id) < 0) {
+		log_error("IMP_OSD_CreateGroup() error! (group_id: %d)", osd_group->group_id);
+		return -1;
+	}
+	
+	int i, ret;
+	
+	for (i = 0; i < osd_group->osd_list_size; i++) {
+		OsdItem *osd_item = &osd_group->osd_list[i];
+		
+		osd_item->rgn_hander = IMP_OSD_CreateRgn(NULL);
+		if (osd_item->rgn_hander == INVHANDLE) {
+			log_error("IMP_OSD_CreateRgn error! (group_id: %d, osd_id: %d)", osd_group->group_id, osd_item->osd_id);
+			return -1;
+		}
+		
+		ret = IMP_OSD_RegisterRgn(osd_item->rgn_hander, osd_group->group_id, NULL);
+		if (ret < 0) {
+			log_error("IMP_OSD_RegisterRgn failed. (group_id: %d, osd_id: %d)", osd_group->group_id, osd_item->osd_id);
+			return -1;
+		}
+	}
+	
+	ret = IMP_OSD_Start(osd_group->group_id);
+	if (ret < 0) {
+		log_error("IMP_OSD_Start error! (group_id: %d)", osd_group->group_id);
+		return -1;
+	}
+	
+	return 0;
+}
+
+int load_osds(cJSON *json, CameraConfig *camera_config) {
+	int i;
+	log_info("Loading OSD groups");
+
+	// Parse osd_groups
+	cJSON *json_osd_groups = cJSON_GetObjectItemCaseSensitive(json, "osd_groups");
+	if (json_osd_groups == NULL) {
+		log_error("Key 'osd_groups' not found in JSON.");
+		return -1;
+	}
+	
+	camera_config->num_osd_groups = cJSON_GetArraySize(json_osd_groups);
+	log_info("Found %d OSD group(s).", camera_config->num_osd_groups);
+	
+	for (i = 0; i < camera_config->num_osd_groups; ++i) {
+		cJSON *json_stream = cJSON_DetachItemFromArray(json_osd_groups, 0);
+		
+		if (populate_osd_group(&camera_config->osd_groups[i], json_stream) != 0) {
+			log_error("Error parsing osd group on index %d.", i);
+			cJSON_Delete(json_stream);
+			return -1;
+		}
+		
+		print_osd_group(&camera_config->osd_groups[i]);
+		setup_osd_group(&camera_config->osd_groups[i]);
+		
+		cJSON_Delete(json_stream);
+	}
+}
+
+
 void load_configuration(cJSON *json, CameraConfig *camera_config)
 {
+  load_isp_settings(json, camera_config);
   load_framesources(json, camera_config);
   load_encoders(json, camera_config);
+  load_osds(json, camera_config);
   load_bindings(json, camera_config);
 }
 
@@ -308,6 +398,16 @@ int enable_framesources(CameraConfig *camera_config)
 
 }
 
+void start_isp_settings_thread(ISPSettings *isp_settings) {
+	int ret = pthread_create(&isp_settings->thread_id, NULL, isp_settings_thread, isp_settings);
+    if (ret < 0) {
+      log_error("Error creating thread for isp settings.");
+    }
+    
+    log_info("Thread %d started for isp settings.", isp_settings->thread_id);
+    sleep(1);
+}
+
 void lock_callback(bool lock, void* udata) {
   pthread_mutex_t *LOCK = (pthread_mutex_t*)(udata);
   if (lock)
@@ -319,7 +419,46 @@ void lock_callback(bool lock, void* udata) {
 
 int main(int argc, const char *argv[])
 {
-  CameraConfig camera_config;
+  if (argc != 2) {
+    printf("./videocapture <json config file>\n");
+    return -1;
+  }
+  
+  // Config
+	CameraConfig *camera_config;
+
+	// Shared Memory (camera_config)
+	int shmid;
+	key_t key;
+	int shmflag = IPC_CREAT | IPC_EXCL | 0666; // default, create new
+
+	// Generate key for shared memory
+	if ((key = ftok(FTOKDIR, FTOKPROJID)) == (key_t)-1) {
+		log_error("Shared memory (ftok): %s", strerror(errno));
+		return 1;
+	}
+	
+	// Ensure there isn't an old shared memory segment
+	// resulting in shmget failing with 'File exists'
+	char buf[16] = "ipcrm -M ";
+	char *tmp = itoa((int)key, 10);
+	strcat(buf, tmp);
+	system(buf);
+
+	// Create or open the shared memory segment
+	if ((shmid = shmget(key, sizeof(CameraConfig), shmflag)) < 0) {
+		log_error("Shared memory (shmget): %s", strerror(errno));
+		return 1;
+	}
+
+	// Attach the segment to our data space
+	if ((camera_config = shmat(shmid, NULL, 0)) == (CameraConfig*)-1) {
+		log_error("Shared memory (shmat): %s", strerror(errno));
+		return 1;
+	}
+	
+	memset(camera_config, 0, sizeof(CameraConfig));
+	
 
   int i, ret;
   char *r;
@@ -334,10 +473,10 @@ int main(int argc, const char *argv[])
   char* file_contents;
   cJSON *json;
 
-  cJSON *json_stream_settings;
-  cJSON *json_stream;
-  cJSON *json_framesources;
-  cJSON *json_encoders;
+  //cJSON *json_stream_settings;
+  //cJSON *json_stream;
+  //cJSON *json_framesources;
+  //cJSON *json_encoders;
 
 
   cJSON *settings;
@@ -349,13 +488,6 @@ int main(int argc, const char *argv[])
 
   int num_encoders;
   EncoderSetting encoders[MAX_ENCODERS];
-
-
-
-  if (argc != 2) {
-    printf("./videocapture <json config file>\n");
-    return -1;
-  }
 
   signal(SIGINT, sigint_handler);
 
@@ -423,15 +555,17 @@ int main(int argc, const char *argv[])
   }
 
 
-  ret = IMP_IVS_CreateGroup(0);
+  /*ret = IMP_IVS_CreateGroup(0);
   if (ret < 0) {
     log_error("IMP_IVS_CreateGroup failed.");
     return -1;
-  }
+  }*/
 
-  load_configuration(json, &camera_config);
+  load_configuration(json, camera_config);
+  
+  start_osd_update_threads(camera_config);
 
-  enable_framesources(&camera_config);
+  enable_framesources(camera_config);
 
 
   if (pthread_mutex_init(&frame_generator_mutex, NULL) != 0) { 
@@ -442,11 +576,37 @@ int main(int argc, const char *argv[])
   
   IMP_ISP_Tuning_SetSharpness(50);
 
-
+	// Start thread that handles ISP configurations
+	start_isp_settings_thread(&camera_config->isp_settings);
 
   // This will suspend the main thread until the streams quit
-  start_frame_producer_threads(&camera_config);
+  start_frame_producer_threads(camera_config);
+  
+	// ----
+  
+	// Wait for OSD threads to finish
+	for (i = 0; i < camera_config->num_encoders; i++) {
+		log_info("Waiting for OSD thread %d to finish.", camera_config->encoders[i].thread_id);
+		pthread_join(camera_config->encoders[i].thread_id, NULL);
+	}
+	
+	// Wait for ISP configuration thread to finish
+	log_info("Waiting for thread %d to finish.", camera_config->isp_settings.thread_id);
+	sem_post(&camera_config->isp_settings.semaphore);
+	pthread_join(camera_config->isp_settings.thread_id, NULL);
 
+	// Wait for frame producer threads to finish
+	int igrp, iosd;
+	for (igrp = 0; igrp < camera_config->num_osd_groups; igrp++) {
+		OsdGroup *osd_group = &camera_config->osd_groups[igrp];
+		
+		for (iosd = 0; iosd < osd_group->osd_list_size; iosd++) {
+			OsdItem *osd_item = &osd_group->osd_list[iosd];
+			
+			log_info("Waiting for frame producer thread %d to finish.", osd_item->thread_id);
+			pthread_join(osd_item->thread_id, NULL);
+		}
+	}
 
   // Resume execution
   log_info("All threads completed. Cleaning up.");
@@ -459,6 +619,8 @@ err:
   cJSON_Delete(json);
   pthread_mutex_destroy(&frame_generator_mutex); 
 
+	// Detach shared memory segment
+	shmdt(camera_config);
 
   return 0;
 }
