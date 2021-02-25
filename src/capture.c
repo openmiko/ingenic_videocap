@@ -3,364 +3,332 @@
 #include "fontmapbig.h"
 
 /*
-
-ISP - Ingenic Smart Platform
-IMP - Ingenic Multimedia Platform
-
+	ISP - Ingenic Smart Platform
+	IMP - Ingenic Multimedia Platform
 */
 
 extern sig_atomic_t sigint_received;
 extern snd_pcm_t *pcm_handle;
-extern pthread_mutex_t frame_generator_mutex; 
-
-int FrameSourceEnabled[5] = {0,0,0,0,0};
+//extern pthread_mutex_t frame_generator_mutex;
 
 int initialize_sensor(IMPSensorInfo *sensor_info)
 {
-  int ret;
-  char sensor_name_buffer[SENSOR_NAME_MAX_LENGTH];
-  char *sensor_name;
-  FILE *sensor_info_proc_file;
-  
-  log_info("Initializing sensor");
+	int ret;
+	char sensor_name_buffer[SENSOR_NAME_MAX_LENGTH];
+	char *sensor_name;
+	FILE *sensor_info_proc_file;
+	
+	log_info("Initializing sensor");
 
-  // Read sensor from /proc filesystem
-  // The string will look like "sensor :jxf23\n" so need to parse it
-  sensor_info_proc_file = fopen("/proc/jz/sinfo/info","r");
+	// Read sensor from /proc filesystem
+	// The string will look like "sensor :jxf23\n" so need to parse it
+	sensor_info_proc_file = fopen("/proc/jz/sinfo/info","r");
 
-  if( fgets(sensor_name_buffer, SENSOR_NAME_MAX_LENGTH, sensor_info_proc_file) == NULL) {
-    log_error("Error getting sensor name from /proc/jz/sinfo/info");
-    return -1;
-  }
+	if (fgets(sensor_name_buffer, SENSOR_NAME_MAX_LENGTH, sensor_info_proc_file) == NULL) {
+		log_error("Error getting sensor name from /proc/jz/sinfo/info");
+		return -1;
+	}
 
-  // Pointer to first occurance of the colon
-  sensor_name = strstr(sensor_name_buffer, ":");
-  if (sensor_name != NULL) {
-    sensor_name = sensor_name + 1;
-    // Assume the last character is a newline and remove it
-    sensor_name[strlen(sensor_name)-1] = '\0';
-  }
-  else {
-    log_error("Expecting sensor name read from /proc to have a colon.");
-    return -1;
-  }
+	// Pointer to first occurance of the colon
+	sensor_name = strstr(sensor_name_buffer, ":");
+	if (sensor_name != NULL) {
+		sensor_name = sensor_name + 1;
 
-  log_info("Determined sensor name: %s", sensor_name);
+		// Assume the last character is a newline and remove it
+		sensor_name[strlen(sensor_name)-1] = '\0';
+	}
+	else {
+		log_error("Expecting sensor name read from /proc to have a colon.");
+		return -1;
+	}
 
-  memset(sensor_info, 0, sizeof(IMPSensorInfo));
+	log_info("Determined sensor name: %s", sensor_name);
+
+	memset(sensor_info, 0, sizeof(IMPSensorInfo));
 	memcpy(sensor_info->name, sensor_name, strlen(sensor_name)+1);
 	sensor_info->cbus_type = SENSOR_CUBS_TYPE;
 	memcpy(sensor_info->i2c.type, sensor_name, strlen(sensor_name)+1);
-  sensor_info->i2c.addr = SENSOR_I2C_ADDR;
+	sensor_info->i2c.addr = SENSOR_I2C_ADDR;
 
-  log_info("IMPSensorInfo details: ");
-  log_info("sensor_info->name: %s", sensor_info->name);
-
-
+	log_info("IMPSensorInfo details: ");
+	log_info("sensor_info->name: %s", sensor_info->name);
 
 	ret = IMP_ISP_Open();
-	if(ret < 0){
+	if (ret < 0) {
 		log_error("Failed to open ISP");
 		return -1;
 	}
-  else {
-    log_info("Opened the ISP module.");
-  }
+	else {
+		log_info("Opened the ISP module.");
+	}
 
 	ret = IMP_ISP_AddSensor(sensor_info);
-	if(ret < 0){
+	if (ret < 0) {
 		log_error("Failed to register the %s sensor.", sensor_name);
 		exit(-1);
 	}
-  else {
-    log_info("Added the %s sensor.", sensor_name);
-  }
+	else {
+		log_info("Added the %s sensor.", sensor_name);
+	}
 
 	ret = IMP_ISP_EnableSensor();
-	if(ret < 0){
+	if (ret < 0) {
 		log_error("Failed to EnableSensor");
 		return -1;
 	}
 
-
 	ret = IMP_System_Init();
-	if(ret < 0){
+	if (ret < 0) {
 		log_error("IMP_System_Init failed");
 		return -1;
 	}
 
-
-
 	/* enable tuning, to debug graphics */
-
 	ret = IMP_ISP_EnableTuning();
-	if(ret < 0){
+	if (ret < 0) {
 		log_error("IMP_ISP_EnableTuning failed\n");
 		return -1;
 	}
-
-
-
-  ret = IMP_ISP_Tuning_SetWDRAttr(IMPISP_TUNING_OPS_MODE_DISABLE);
-  if(ret < 0){
-    log_error("failed to set WDR\n");
-    return -1;
-  }
-
-
+	
+	ret = IMP_ISP_Tuning_SetWDRAttr(IMPISP_TUNING_OPS_MODE_DISABLE);
+	if (ret < 0) {
+		log_error("failed to set WDR\n");
+		return -1;
+	}
+	
 	log_info("Sensor succesfully initialized.");
 
 	return 0;
-
 }
 
 int initialize_audio()
 {
-  int ret;
-  int device_id = 1;
-  int audio_channel_id = 0;
+	int ret;
+	int device_id = 1;
+	int audio_channel_id = 0;
 
-  IMPAudioIOAttr audio_settings;
-  IMPAudioIChnParam audio_channel_params;
+	IMPAudioIOAttr audio_settings;
+	IMPAudioIChnParam audio_channel_params;
 
-  log_info("Initializing audio settings");
+	log_info("Initializing audio settings");
 
-  audio_settings.samplerate = AUDIO_SAMPLE_RATE_48000;
-  audio_settings.bitwidth = AUDIO_BIT_WIDTH_16;
-  audio_settings.soundmode = AUDIO_SOUND_MODE_MONO; 
+	audio_settings.samplerate = AUDIO_SAMPLE_RATE_48000;
+	audio_settings.bitwidth = AUDIO_BIT_WIDTH_16;
+	audio_settings.soundmode = AUDIO_SOUND_MODE_MONO;
 
-  // Number of audio frames to cache (max is 50) 
-  audio_settings.frmNum = MAX_AUDIO_FRAME_NUM;
+	// Number of audio frames to cache (max is 50)
+	audio_settings.frmNum = MAX_AUDIO_FRAME_NUM;
 
-  // Number of sampling points per frame
-  audio_settings.numPerFrm = 960;
-  audio_settings.chnCnt = 1;
+	// Number of sampling points per frame
+	audio_settings.numPerFrm = 960;
+	audio_settings.chnCnt = 1;
 
+	// ALSA
+	snd_pcm_hw_params_t *pcm_hw_params;
+	snd_pcm_uframes_t pcm_frames;
+	int sample_rate, audio_channels;
+	
+	ret = IMP_AI_SetPubAttr(device_id, &audio_settings);
+	if (ret < 0) {
+		log_error("Error in setting attributes for audio encoder\n");
+		return -1;
+	}
 
+	log_info("Sample rate: %d", audio_settings.samplerate);
+	log_info("Bit width: %d", audio_settings.bitwidth);
+	log_info("Sound mode: %d", audio_settings.soundmode);
+	log_info("Max frames to cache: %d", audio_settings.frmNum);
+	log_info("Samples per frame: %d", audio_settings.numPerFrm);
 
-  // ALSA
-  snd_pcm_hw_params_t *pcm_hw_params;
-  snd_pcm_uframes_t pcm_frames;
-  int sample_rate, audio_channels;
+	/* Step 2: enable AI device. */
+	ret = IMP_AI_Enable(device_id);
+	if (ret != 0) {
+		log_error("Error enabling the audio device: %d", device_id);
+		return -1;
+	}
 
+	// Set audio channel attributes of device
+	
+	// Audio frame buffer depth
+	audio_channel_params.usrFrmDepth = 20;
 
+	ret = IMP_AI_SetChnParam(device_id, audio_channel_id, &audio_channel_params);
+	if (ret != 0) {
+		log_error("Error setting the audio channel parameters for device %d", device_id);
+		return -1;
+	}
 
+	// Step 4: enable AI channel.
+	ret = IMP_AI_EnableChn(device_id, audio_channel_id);
+	if (ret != 0) {
+		log_error("Error enabling audio channel");
+		return -1;
+	}
 
-  ret = IMP_AI_SetPubAttr(device_id, &audio_settings);
+	/* Step 5: Set audio channel volume. */
+	ret = IMP_AI_SetVol(device_id, audio_channel_id, 70);
+	if (ret != 0) {
+		log_error("Error setting the audio channel volume");
+		return -1;
+	}	
 
-  if(ret < 0){
-    log_error("Error in setting attributes for audio encoder\n");
-    return -1;
-  }
+	// ALSA loopback device setup
+	// Found good sample code here: https://gist.github.com/ghedo/963382/98f730d61dad5b6fdf0c4edb7a257c5f9700d83b
+	
+	ret = snd_pcm_open(&pcm_handle, "hw:0,0", SND_PCM_STREAM_PLAYBACK, 0);
+	if (ret != 0) {
+		log_error("Error opening ALSA PCM loopback device.");
+		return -1;
+	}
 
-  log_info("Sample rate: %d", audio_settings.samplerate);
-  log_info("Bit width: %d", audio_settings.bitwidth);
-  log_info("Sound mode: %d", audio_settings.soundmode);
-  log_info("Max frames to cache: %d", audio_settings.frmNum);
-  log_info("Samples per frame: %d", audio_settings.numPerFrm);
+	/* Allocate parameters object and fill it with default values*/
+	snd_pcm_hw_params_alloca(&pcm_hw_params);
+	snd_pcm_hw_params_any(pcm_handle, pcm_hw_params);
 
-  /* Step 2: enable AI device. */
-  ret = IMP_AI_Enable(device_id);
-  if(ret != 0) {
-    log_error("Error enabling the audio device: %d", device_id);
-    return -1;
-  }
+	audio_channels = 1;
+	sample_rate = 48000;
 
+	/* Set parameters */
+	ret = snd_pcm_hw_params_set_access(pcm_handle, pcm_hw_params, SND_PCM_ACCESS_RW_INTERLEAVED);
+	if (ret < 0) {
+		log_error("ERROR: Can't set interleaved mode. %s\n", snd_strerror(ret));
+	}
 
-  // Set audio channel attributes of device
+	ret = snd_pcm_hw_params_set_format(pcm_handle, pcm_hw_params, SND_PCM_FORMAT_S16_LE);
+	if (ret < 0) {
+		log_error("ERROR: Can't set format. %s\n", snd_strerror(ret));
+	}
 
-  // Audio frame buffer depth
-  audio_channel_params.usrFrmDepth = 20;
+	ret = snd_pcm_hw_params_set_channels(pcm_handle, pcm_hw_params, audio_channels);
+	if (ret < 0) {
+		log_error("ERROR: Can't set channels number. %s\n", snd_strerror(ret));
+	}
 
-  ret = IMP_AI_SetChnParam(device_id, audio_channel_id, &audio_channel_params);
-  if(ret != 0) {
-    log_error("Error setting the audio channel parameters for device %d", device_id);
-    return -1;
-  }
+	ret = snd_pcm_hw_params_set_rate_near(pcm_handle, pcm_hw_params, &sample_rate, 0);
+	if (ret < 0) {
+		log_error("ERROR: Can't set rate. %s\n", snd_strerror(ret));
+	}
 
-  // Step 4: enable AI channel.
-  ret = IMP_AI_EnableChn(device_id, audio_channel_id);
-  if(ret != 0) {
-    log_error("Error enabling audio channel");
-    return -1;
-  }
+	/* Write parameters */
+	ret = snd_pcm_hw_params(pcm_handle, pcm_hw_params);
+	if (ret < 0) {
+		log_error("ERROR: Can't set harware parameters. %s\n", snd_strerror(ret));
+	}
 
-  /* Step 5: Set audio channel volume. */
-  ret = IMP_AI_SetVol(device_id, audio_channel_id, 70);
-  if(ret != 0) {
-    log_error("Error setting the audio channel volume");
-    return -1;
-  }  
+	log_info("PCM name: %s", snd_pcm_name(pcm_handle));
+	log_info("PCM state: %s", snd_pcm_state_name(snd_pcm_state(pcm_handle)));
 
+	snd_pcm_hw_params_get_channels(pcm_hw_params, &audio_channels);
+	log_info("PCM channels: %d", audio_channels);
 
+	snd_pcm_hw_params_get_rate(pcm_hw_params, &sample_rate, 0);
+	log_info("PCM sample rate: %d bps", sample_rate);
 
-  // ALSA loopback device setup
-  // Found good sample code here: https://gist.github.com/ghedo/963382/98f730d61dad5b6fdf0c4edb7a257c5f9700d83b
+	log_info("Audio initialization complete");
 
-  ret = snd_pcm_open(&pcm_handle, "hw:0,0", SND_PCM_STREAM_PLAYBACK, 0);
-  if(ret != 0) {
-    log_error("Error opening ALSA PCM loopback device.");
-    return -1;
-  }
-
-
-
-  /* Allocate parameters object and fill it with default values*/
-  snd_pcm_hw_params_alloca(&pcm_hw_params);
-  snd_pcm_hw_params_any(pcm_handle, pcm_hw_params);
-
-
-  audio_channels = 1;
-  sample_rate = 48000;
-
-  /* Set parameters */
-  if (ret = snd_pcm_hw_params_set_access(pcm_handle, pcm_hw_params, SND_PCM_ACCESS_RW_INTERLEAVED) < 0) {    
-    log_error("ERROR: Can't set interleaved mode. %s\n", snd_strerror(ret));
-  }
-
-  if (ret = snd_pcm_hw_params_set_format(pcm_handle, pcm_hw_params, SND_PCM_FORMAT_S16_LE) < 0)  {
-    log_error("ERROR: Can't set format. %s\n", snd_strerror(ret));
-  }
-
-  if (ret = snd_pcm_hw_params_set_channels(pcm_handle, pcm_hw_params, audio_channels) < 0) {
-    log_error("ERROR: Can't set channels number. %s\n", snd_strerror(ret));
-  }
-
-  if (ret = snd_pcm_hw_params_set_rate_near(pcm_handle, pcm_hw_params, &sample_rate, 0) < 0) {    
-    log_error("ERROR: Can't set rate. %s\n", snd_strerror(ret));  
-  }
-
-  /* Write parameters */
-  if (ret = snd_pcm_hw_params(pcm_handle, pcm_hw_params) < 0) {    
-    log_error("ERROR: Can't set harware parameters. %s\n", snd_strerror(ret));
-  }
-
-
-
-  log_info("PCM name: %s", snd_pcm_name(pcm_handle));
-  log_info("PCM state: %s", snd_pcm_state_name(snd_pcm_state(pcm_handle)));
-
-  snd_pcm_hw_params_get_channels(pcm_hw_params, &audio_channels);
-  log_info("PCM channels: %d", audio_channels);
-
-  snd_pcm_hw_params_get_rate(pcm_hw_params, &sample_rate, 0);
-  log_info("PCM sample rate: %d bps", sample_rate);
-
-
-  log_info("Audio initialization complete");
-
-  return 0;
+	return 0;
 }
 
 
 int create_encoding_group(int group_id)
 {
-  // One group only supports one resolution, and different resolutions
-  // need to start a new group. A Group supports both H264 and JPEG
-  // capture formats
+	// One group only supports one resolution, and different resolutions
+	// need to start a new group. A Group supports both H264 and JPEG
+	// capture formats
 
-  int ret;
+	int ret;
 
-  ret = IMP_Encoder_CreateGroup(group_id);
-  if (ret < 0) {
-    log_warn("IMP_Encoder_CreateGroup(%d) error. Can be ignored if already created.", group_id);
-    return -1;
-  }
-  else {
-    log_info("Created encoding group %d", group_id);
-  }
+	ret = IMP_Encoder_CreateGroup(group_id);
+	if (ret < 0) {
+		log_warn("IMP_Encoder_CreateGroup(%d) error. Can be ignored if already created.", group_id);
+		return -1;
+	}
+	else {
+		log_info("Created encoding group %d", group_id);
+	}
 
-  return 0;
+	return 0;
 }
-
-
 
 int setup_encoding_engine(FrameSource* frame_source, EncoderSetting *encoder_setting)
 {
-  int i, ret;
-  IMPEncoderAttr *enc_attr;
-  IMPEncoderRcAttr *rc_attr;
-  IMPFSChnAttr *imp_chn_attr_tmp;
-  IMPEncoderCHNAttr channel_attr;
+	int i, ret;
+	IMPEncoderAttr *enc_attr;
+	IMPEncoderRcAttr *rc_attr;
+	IMPFSChnAttr *imp_chn_attr_tmp;
+	IMPEncoderCHNAttr channel_attr;
 
-  // imp_chn_attr_tmp = &chn[i].fs_chn_attr;
+	// imp_chn_attr_tmp = &chn[i].fs_chn_attr;
 
-  memset(&channel_attr, 0, sizeof(IMPEncoderCHNAttr));
-  enc_attr = &channel_attr.encAttr;
+	memset(&channel_attr, 0, sizeof(IMPEncoderCHNAttr));
+	enc_attr = &channel_attr.encAttr;
 
-  if (strcmp(encoder_setting->payload_type, "PT_H264") == 0) {
-    enc_attr->enType = PT_H264;
-  }
-  else if(strcmp(encoder_setting->payload_type, "PT_JPEG") == 0) {
-    enc_attr->enType = PT_JPEG;
-  }
-  else {
-    log_error("Unknown payload type: %s", encoder_setting->payload_type);
-    return -1;
-  }
+	if (strcmp(encoder_setting->payload_type, "PT_H264") == 0) {
+		enc_attr->enType = PT_H264;
+	}
+	else if (strcmp(encoder_setting->payload_type, "PT_JPEG") == 0) {
+		enc_attr->enType = PT_JPEG;
+	}
+	else {
+		log_error("Unknown payload type: %s", encoder_setting->payload_type);
+		return -1;
+	}
 
-  enc_attr->bufSize = encoder_setting->buffer_size;
-  enc_attr->profile = encoder_setting->profile;
-  enc_attr->picWidth = frame_source->pic_width;
-  enc_attr->picHeight = frame_source->pic_height;
-  rc_attr = &channel_attr.rcAttr;
+	enc_attr->bufSize = encoder_setting->buffer_size;
+	enc_attr->profile = encoder_setting->profile;
+	enc_attr->picWidth = frame_source->pic_width;
+	enc_attr->picHeight = frame_source->pic_height;
+	rc_attr = &channel_attr.rcAttr;
 
-  if (strcmp(encoder_setting->mode, "ENC_RC_MODE_H264VBR") == 0) {
-    rc_attr->rcMode = ENC_RC_MODE_H264VBR;
-  }
-  else if (strcmp(encoder_setting->mode, "MJPEG") == 0) {
-    rc_attr->rcMode = 0;
-  }
-  else {
-    log_error("Unknown encoding mode: %s", encoder_setting->mode);
-  }
+	if (strcmp(encoder_setting->mode, "ENC_RC_MODE_H264VBR") == 0) {
+		rc_attr->rcMode = ENC_RC_MODE_H264VBR;
+	}
+	else if (strcmp(encoder_setting->mode, "MJPEG") == 0) {
+		rc_attr->rcMode = 0;
+	}
+	else {
+		log_error("Unknown encoding mode: %s", encoder_setting->mode);
+	}
 
+	rc_attr->attrH264Vbr.outFrmRate.frmRateNum = encoder_setting->frame_rate_numerator;
+	rc_attr->attrH264Vbr.outFrmRate.frmRateDen = encoder_setting->frame_rate_denominator;
+	rc_attr->attrH264Vbr.maxGop = encoder_setting->max_group_of_pictures;
+	rc_attr->attrH264Vbr.maxQp = encoder_setting->max_qp;
+	rc_attr->attrH264Vbr.minQp = encoder_setting->min_qp;
+	
+	// use IMP struct instead
+	rc_attr->attrH264Vbr.staticTime = encoder_setting->h264vbr.statistics_interval;
+	rc_attr->attrH264Vbr.maxBitRate = encoder_setting->h264vbr.max_bitrate;
+	rc_attr->attrH264Vbr.changePos = encoder_setting->h264vbr.change_pos;
 
-  rc_attr->attrH264Vbr.outFrmRate.frmRateNum = encoder_setting->frame_rate_numerator;
-  rc_attr->attrH264Vbr.outFrmRate.frmRateDen = encoder_setting->frame_rate_denominator;
-  rc_attr->attrH264Vbr.maxGop = encoder_setting->max_group_of_pictures;
-  rc_attr->attrH264Vbr.maxQp = encoder_setting->max_qp;
-  rc_attr->attrH264Vbr.minQp = encoder_setting->min_qp;
-  
-  rc_attr->attrH264Vbr.staticTime = encoder_setting->h264vbr.statistics_interval;
-  rc_attr->attrH264Vbr.maxBitRate = encoder_setting->h264vbr.max_bitrate;
-  rc_attr->attrH264Vbr.changePos = encoder_setting->h264vbr.change_pos;
+	rc_attr->attrH264Vbr.FrmQPStep = encoder_setting->frame_qp_step;
+	rc_attr->attrH264Vbr.GOPQPStep = encoder_setting->gop_qp_step;
+	rc_attr->attrH264FrmUsed.enable = 1;
 
-  //rc_attr->attrH264Vbr.staticTime = 1;
-  //rc_attr->attrH264Vbr.maxBitRate = 500;
-  //rc_attr->attrH264Vbr.changePos = 50;
+	log_info("Encoder channel attributes for channel %d", encoder_setting->channel);
+	print_encoder_channel_attributes(&channel_attr);
 
+	ret = IMP_Encoder_CreateChn(encoder_setting->channel, &channel_attr);
+	if (ret < 0) {
+		log_error("Error creating encoder channel %d", encoder_setting->channel);
+		return -1;
+	}
 
-  rc_attr->attrH264Vbr.FrmQPStep = encoder_setting->frame_qp_step;
-  rc_attr->attrH264Vbr.GOPQPStep = encoder_setting->gop_qp_step;
-  rc_attr->attrH264FrmUsed.enable = 1;
+	log_info("Created encoder channel %d", encoder_setting->channel);
 
+	ret = IMP_Encoder_RegisterChn(encoder_setting->group, encoder_setting->channel);
+	if (ret < 0) {
+		log_error("IMP_Encoder_RegisterChn error.");
+		return -1;
+	}
+	log_info("IMP_Encoder_RegisterChn(Group [%d], Channel [%d])", encoder_setting->group, encoder_setting->channel);
 
-  log_info("Encoder channel attributes for channel %d", encoder_setting->channel);
-  print_encoder_channel_attributes(&channel_attr);
-
-
-  ret = IMP_Encoder_CreateChn(encoder_setting->channel, &channel_attr);
-  if (ret < 0) {
-    log_error("Error creating encoder channel %d", encoder_setting->channel);      
-    return -1;
-  }
-
-  log_info("Created encoder channel %d", encoder_setting->channel);
-
-  ret = IMP_Encoder_RegisterChn(encoder_setting->group, encoder_setting->channel);
-  if (ret < 0) {
-    log_error("IMP_Encoder_RegisterChn error.");
-    return -1;
-  }
-  log_info("IMP_Encoder_RegisterChn(Group [%d], Channel [%d])", encoder_setting->group, encoder_setting->channel);
-
-  return 0;
-
+	return 0;
 }
 
 // OSD
-void *osd_update_thread(void *p) {
+void *osd_update_thread(void *p)
+{
 	OsdThreadData *osdThreadData = (OsdThreadData*) p;
 	
 	OsdGroup *osd_group = osdThreadData->osd_group;
@@ -402,26 +370,18 @@ void *osd_update_thread(void *p) {
 	
 	pthread_mutexattr_t mutex_attr;
 	pthread_mutexattr_setpshared(&mutex_attr, PTHREAD_PROCESS_SHARED);
-	ret = pthread_mutex_init(&osd_item->mutexWrite, &mutex_attr);
+	ret = pthread_mutex_init(&osd_item->mutex, &mutex_attr);
 	if (ret != 0) {
 		log_error("pthread_mutex_init error (osd_id %d)", osd_item->osd_id);
 		return NULL;
 	}
-	
-	pthread_mutexattr_t mutex_attr2;
-	pthread_mutexattr_setpshared(&mutex_attr2, PTHREAD_PROCESS_SHARED);
-	ret = pthread_mutex_init(&osd_item->mutexRead, &mutex_attr2);
-	if (ret != 0) {
-		log_error("pthread_mutex_init error (osd_id %d)", osd_item->osd_id);
-		return NULL;
-	}
-	
+
+	// Flag at 1 allow to startup without having the same functions elsewhere
 	osd_item->reload_flag = 1;
 	
 	while (!sigint_received) {
-		pthread_mutex_unlock(&osd_item->mutexRead);
-		pthread_mutex_lock(&osd_item->mutexWrite);
-		
+		pthread_mutex_lock(&osd_item->mutex);
+
 		if (osd_item->reload_flag == 1) {
 			IMPOSDRgnAttr rAttrTmp;
 			memset(&rAttrTmp, 0, sizeof(IMPOSDRgnAttr));
@@ -523,7 +483,7 @@ void *osd_update_thread(void *p) {
 					osd_num_counter = 1;
 				}
 				
-				snprintf(text, sizeof(text), "%d",  osd_num_counter);
+				snprintf(text, sizeof(text), "%d", osd_num_counter);
 			}
 			else if (strcmp(osd_item->text, "#HOSTNAME#") == 0) {				
 				ret = gethostname(text, sizeof(text));
@@ -558,7 +518,7 @@ void *osd_update_thread(void *p) {
 				}
 			}
 			
-			for (i = 0; text[i] != '\0'; i++) {
+			for (i = 0; text[i] != '\0' && i < sizeof(text); i++) {
 				if (text[i] == ' ') {
 					offset_left += space_char_size + osd_item->extra_space_char_size;
 					continue;
@@ -613,7 +573,7 @@ void *osd_update_thread(void *p) {
 						// left/right: left + offsetLeft + fontCharOffset - fixSmearing
 						pixel = &pixel_matrix[(top + offset_top) * osd_item->size_x + left + offset_left + font_char_offset - fix_smearing];
 						
-						// if pixel is from the font character
+						// if pixel belongs to the font character
 						if (((uint32_t *) font_char)[(top * font_width_bytes) + left]) {
 							// set pixel color
 							*pixel = get_osd_color_from_string(osd_item->primary_color);
@@ -654,7 +614,7 @@ void *osd_update_thread(void *p) {
 					f_lenght = ftell(f);
 					rewind(f);
 					
-					for(i = 0; i < f_lenght && i < osd_item->size_x * osd_item->size_y * 4; i++) {
+					for (i = 0; i < f_lenght && i < osd_item->size_x * osd_item->size_y * 4; i++) {
 						fread(&pixel_matrix_8bit[image_loc++], 1, 1, f);
 					}
 
@@ -695,24 +655,23 @@ void *osd_update_thread(void *p) {
 		
 		if (osd_item->reload_flag == 1) osd_item->reload_flag = 0;
 		
+		pthread_mutex_unlock(&osd_item->mutex);
+		
 		if (osd_item->update_interval > 1)
 			usleep(1000 * osd_item->update_interval);
 		else
 			sleep(1);
-		
-		pthread_mutex_unlock(&osd_item->mutexWrite);
-		pthread_mutex_lock(&osd_item->mutexRead);
 	}
 	
 	free(pixel_matrix);
 	
-	pthread_mutex_destroy(&osd_item->mutexRead);
-	pthread_mutex_destroy(&osd_item->mutexWrite);
+	pthread_mutex_destroy(&osd_item->mutex);
 
 	return NULL;
 }
 
-void start_osd_update_threads(CameraConfig *camera_config) {
+void start_osd_update_threads(CameraConfig *camera_config)
+{
 	int ret;
 	OsdThreadData osd_thread_data[MAX_OSDGROUPS][MAX_OSDITEMS];
 
@@ -722,6 +681,7 @@ void start_osd_update_threads(CameraConfig *camera_config) {
 		for (int iosd = 0; iosd < osd_group->osd_list_size; iosd++) {
 			OsdItem *osd_item = &osd_group->osd_list[iosd];
 			
+			// ...change this to pointers?
 			osd_thread_data[igrp][iosd].osd_group = osd_group;
 			osd_thread_data[igrp][iosd].osd_item = osd_item;
 
@@ -740,405 +700,382 @@ void start_osd_update_threads(CameraConfig *camera_config) {
 
 void print_channel_attributes(IMPFSChnAttr *attr)
 {
-  char buffer[1024];  
-  snprintf(buffer, sizeof(buffer), "IMPFSChnAttr: \n"
-                   "picWidth: %d\n"
-                   "picHeight: %d\n"
-                   "outFrmRateNum: %d\n"
-                   "outFrmRateDen: %d\n"
-                   "nrVBs: %d\n",
-                    attr->picWidth,
-                    attr->picHeight,
-                    attr->outFrmRateNum,
-                    attr->outFrmRateDen,
-                    attr->nrVBs
-                    );
-  log_info("%s", buffer);
+	char buffer[1024];
+
+	snprintf(buffer, sizeof(buffer),
+		"IMPFSChnAttr: \n"
+		"picWidth: %d\n"
+		"picHeight: %d\n"
+		"outFrmRateNum: %d\n"
+		"outFrmRateDen: %d\n"
+		"nrVBs: %d\n",
+		attr->picWidth,
+		attr->picHeight,
+		attr->outFrmRateNum,
+		attr->outFrmRateDen,
+		attr->nrVBs
+	);
+	
+	log_info("%s", buffer);
 }
 
 
 void print_encoder_channel_attributes(IMPEncoderCHNAttr *attr)
 {
-  IMPEncoderAttr *enc_attr;
-  IMPEncoderRcAttr *rc_attr;  
-  char buffer[4096];
-  char payload_type[32];
+	IMPEncoderAttr *enc_attr;
+	IMPEncoderRcAttr *rc_attr;
+	char buffer[4096];
+	char payload_type[32];
 
-  enc_attr = &attr->encAttr;
-  rc_attr = &attr->rcAttr;
+	enc_attr = &attr->encAttr;
+	rc_attr = &attr->rcAttr;
 
+	switch(enc_attr->enType) {
+		case PT_H264:
+			strcpy(payload_type, "PT_H264");
+		break;
+		case PT_JPEG:
+			strcpy(payload_type, "PT_JPEG");
+		break;
+		default:
+			strcpy(payload_type, "ERROR_UNKNOWN");
+	}
 
-  switch(enc_attr->enType) {
-    case PT_H264:
-      strcpy(payload_type, "PT_H264");
-      break;
-    case PT_JPEG:
-      strcpy(payload_type, "PT_JPEG");
-      break;
-    default:
-      strcpy(payload_type, "ERROR_UNKNOWN");
-  }
+	snprintf(buffer, sizeof(buffer),
+		"IMPEncoderCHNAttr: \n"
+		"payload_type: %s\n"
+		"bufSize: %u\n"
+		"profile: %u\n"
+		"picWidth: %u\n"
+		"picHeight: %u\n"
+		"attrH264Vbr.outFrmRate.frmRateNum: %u\n"
+		"attrH264Vbr.outFrmRate.frmRateDen: %u\n"
+		"attrH264Vbr.maxGop: %u\n"
+		"attrH264Vbr.maxQp: %u\n"
+		"attrH264Vbr.minQp: %u\n"
+		"attrH264Vbr.staticTime: %u\n"
+		"attrH264Vbr.maxBitRate: %u\n"
+		"attrH264Vbr.changePos: %u\n"
+		"attrH264Vbr.FrmQPStep: %u\n"
+		"attrH264Vbr.GOPQPStep: %u\n",
+		payload_type,
+		enc_attr->bufSize,
+		enc_attr->profile,
+		enc_attr->picWidth,
+		enc_attr->picHeight,
+		rc_attr->attrH264Vbr.outFrmRate.frmRateNum,
+		rc_attr->attrH264Vbr.outFrmRate.frmRateDen,
+		rc_attr->attrH264Vbr.maxGop,
+		rc_attr->attrH264Vbr.maxQp,
+		rc_attr->attrH264Vbr.minQp,
+		rc_attr->attrH264Vbr.staticTime,
+		rc_attr->attrH264Vbr.maxBitRate,
+		rc_attr->attrH264Vbr.changePos,
+		rc_attr->attrH264Vbr.FrmQPStep,
+		rc_attr->attrH264Vbr.GOPQPStep
+	);
 
-  snprintf(buffer, sizeof(buffer), "IMPEncoderCHNAttr: \n"
-                   "payload_type: %s\n"
-                   "bufSize: %u\n"
-                   "profile: %u\n"
-                   "picWidth: %u\n"
-                   "picHeight: %u\n"
-                   "attrH264Vbr.outFrmRate.frmRateNum: %u\n"
-                   "attrH264Vbr.outFrmRate.frmRateDen: %u\n"
-                   "attrH264Vbr.maxGop: %u\n"
-                   "attrH264Vbr.maxQp: %u\n"
-                   "attrH264Vbr.minQp: %u\n"
-                   "attrH264Vbr.staticTime: %u\n"
-                   "attrH264Vbr.maxBitRate: %u\n"
-                   "attrH264Vbr.changePos: %u\n"
-                   "attrH264Vbr.FrmQPStep: %u\n"
-                   "attrH264Vbr.GOPQPStep: %u\n",
-                    payload_type,
-                    enc_attr->bufSize,
-                    enc_attr->profile,
-                    enc_attr->picWidth,
-                    enc_attr->picHeight,
-                    rc_attr->attrH264Vbr.outFrmRate.frmRateNum,
-                    rc_attr->attrH264Vbr.outFrmRate.frmRateDen,
-                    rc_attr->attrH264Vbr.maxGop,
-                    rc_attr->attrH264Vbr.maxQp,
-                    rc_attr->attrH264Vbr.minQp,
-                    rc_attr->attrH264Vbr.staticTime,
-                    rc_attr->attrH264Vbr.maxBitRate,
-                    rc_attr->attrH264Vbr.changePos,
-                    rc_attr->attrH264Vbr.FrmQPStep,
-                    rc_attr->attrH264Vbr.GOPQPStep
-                    );
-  log_info("%s", buffer);
+	log_info("%s", buffer);
 }
 
 
 void print_stream_settings(StreamSettings *stream_settings)
 {
-  char buffer[1024];  
-  snprintf(buffer, sizeof(buffer), "Stream settings: \n"
-                   "name: %s\n"
-                   "enabled: %d\n"
-                   "pic_width: %d\n"
-                   "pic_height: %d\n"
-                   "statistics_interval: %d\n"
-                   "max_bitrate: %d\n"
-                   "change_pos: %d\n"
-                   "group: %d\n",
-                    stream_settings->name,
-                    stream_settings->enabled,
-                    stream_settings->pic_width,
-                    stream_settings->pic_height,
-                    stream_settings->statistics_interval,
-                    stream_settings->max_bitrate,
-                    stream_settings->change_pos,
-                    stream_settings->group
-                    );
-  log_info("%s", buffer);
-}
+	char buffer[1024];
 
+	snprintf(buffer, sizeof(buffer),
+		"Stream settings: \n"
+		"name: %s\n"
+		"enabled: %d\n"
+		"pic_width: %d\n"
+		"pic_height: %d\n"
+		"statistics_interval: %d\n"
+		"max_bitrate: %d\n"
+		"change_pos: %d\n"
+		"group: %d\n",
+		stream_settings->name,
+		stream_settings->enabled,
+		stream_settings->pic_width,
+		stream_settings->pic_height,
+		stream_settings->statistics_interval,
+		stream_settings->max_bitrate,
+		stream_settings->change_pos,
+		stream_settings->group
+	);
+	
+	log_info("%s", buffer);
+}
 
 // This is the entrypoint for the threads
 void *produce_frames(void *encoder_thread_params_ptr)
 {
-  int ret, i;
-  EncoderThreadParams *encoder_thread_params = encoder_thread_params_ptr;
+	int ret, i;
+	EncoderThreadParams *encoder_thread_params = encoder_thread_params_ptr;
 
-  // Unpack the EncoderThreadParams
-  EncoderSetting *encoder = encoder_thread_params->encoder;
+	// Unpack the EncoderThreadParams
+	EncoderSetting *encoder = encoder_thread_params->encoder;
 
-  log_info("Starting thread for encoder");
+	log_info("Starting thread for encoder");
 
-  output_v4l2_frames(encoder);
-
+	output_v4l2_frames(encoder);
 }
 
 int output_v4l2_frames(EncoderSetting *encoder_setting)
 {
-  int ret;
-  int stream_packets;
-  int i;
-  int total;
-  char *v4l2_device_path = encoder_setting->v4l2_device_path;
-  int video_width = encoder_setting->pic_width;
-  int video_height = encoder_setting->pic_height;
+	int ret;
+	int stream_packets;
+	int i;
+	int total;
+	char *v4l2_device_path = encoder_setting->v4l2_device_path;
+	int video_width = encoder_setting->pic_width;
+	int video_height = encoder_setting->pic_height;
 
-  int frames_written = 0;
-  float current_fps = 0;
-  float elapsed_seconds = 0;
-  struct timeval tval_before, tval_after, tval_result;
-  float delay_in_seconds = 0;
+	int frames_written = 0;
+	float current_fps = 0;
+	float elapsed_seconds = 0;
+	struct timeval tval_before, tval_after, tval_result;
+	unsigned long delay_in_microseconds = 0;
 
 	encoder_setting->reload_flag = 0;
 	
 	pthread_mutexattr_t mutex_attr;
 	pthread_mutexattr_setpshared(&mutex_attr, PTHREAD_PROCESS_SHARED);
-	ret = pthread_mutex_init(&encoder_setting->mutexWrite, &mutex_attr);
-	if (ret != 0) {
-		log_error("pthread_mutex_init error (encoder channel %d)", encoder_setting->channel);
-		return -1;
-	}
-	
-	pthread_mutexattr_t mutex_attr2;
-	pthread_mutexattr_setpshared(&mutex_attr2, PTHREAD_PROCESS_SHARED);
-	ret = pthread_mutex_init(&encoder_setting->mutexRead, &mutex_attr2);
+	ret = pthread_mutex_init(&encoder_setting->mutex, &mutex_attr);
 	if (ret != 0) {
 		log_error("pthread_mutex_init error (encoder channel %d)", encoder_setting->channel);
 		return -1;
 	}
 
-
-  struct v4l2_capability vid_caps;
-  struct v4l2_format vid_format;
-
-  IMPEncoderStream stream;
-
-  uint8_t *stream_chunk;
-  uint8_t *temp_chunk;
-
-  // Audio device
-  int audio_device_id = 1;
-  int audio_channel_id = 0;
-  IMPAudioFrame audio_frame;
-  int num_samples;
-  short pcm_audio_data[1024];
-
-  // h264 NAL unit stuff
-
-  // h264_stream_t *h = h264_new();
-  // int nal_start, nal_end;
-  // uint8_t* buf;
-  // int len;
-
-
-
-
-  delay_in_seconds = (1.0 * encoder_setting->frame_rate_denominator) / encoder_setting->frame_rate_numerator;
-  log_info("Delay in seconds: %f", delay_in_seconds);
-
-
-
-
-
-
-  log_info("Opening V4L2 device: %s ", v4l2_device_path);
-  int v4l2_fd = open(v4l2_device_path, O_WRONLY, 0777);
-
-  if (v4l2_fd < 0) {
-    log_error("Failed to open V4L2 device: %s", v4l2_device_path);
-    return -1;
-  }
-
-
-  // ret = ioctl(v4l2_fd, VIDIOC_QUERYCAP, &vid_caps);
-
-  memset(&vid_format, 0, sizeof(vid_format));
-  vid_format.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
-  vid_format.fmt.pix.width = video_width;
-  vid_format.fmt.pix.height = video_height;
-
-  if (strcmp(encoder_setting->payload_type, "PT_H264") == 0) {
-    vid_format.fmt.pix.pixelformat = V4L2_PIX_FMT_H264;
-    vid_format.fmt.pix.sizeimage = 0;
-    vid_format.fmt.pix.field = V4L2_FIELD_NONE;
-    vid_format.fmt.pix.bytesperline = 0;
-    vid_format.fmt.pix.colorspace = V4L2_PIX_FMT_YUV420;
-  }
-  else if(strcmp(encoder_setting->payload_type, "PT_JPEG") == 0) {
-    vid_format.fmt.pix.pixelformat = V4L2_PIX_FMT_JPEG;
-    // TODO: Is this correct? Doc says needs to be set to maximum size of image
-    vid_format.fmt.pix.sizeimage = 0; 
-    vid_format.fmt.pix.field = V4L2_FIELD_NONE;
-    vid_format.fmt.pix.bytesperline = 0;
-    vid_format.fmt.pix.colorspace = V4L2_COLORSPACE_JPEG;
-  }
-  else {
-    log_error("Unknown payload type: %s", encoder_setting->payload_type);
-    return -1;
-  }
-
-
-  ret = ioctl(v4l2_fd, VIDIOC_S_FMT, &vid_format);
-  if (ret < 0) {
-    log_error("Unable to set V4L2 device video format: %d", ret);
-    return -1;
-  }
-
-  ret = ioctl(v4l2_fd, VIDIOC_STREAMON, &vid_format);
-  if (ret < 0) {
-    log_error("Unable to perform VIDIOC_STREAMON: %d", ret);
-    return -1;
-  }
-
-  log_info("V4L2 device opened and setup complete: VIDIOC_STREAMON");
-  
-
-  log_info("Sleeping 2 seconds before starting to send frames...");
-
-
-  ret = IMP_Encoder_StartRecvPic(encoder_setting->channel);
-  if (ret < 0) {
-    log_error("IMP_Encoder_StartRecvPic(%d) failed.", encoder_setting->channel);
-    return -1;
-  }
-
-  // Every set number of frames calculate out how many frames per second we are getting
-  current_fps = 0;
-  frames_written = 0;
-  gettimeofday(&tval_before, NULL);
-
-  while(!sigint_received) {
-	pthread_mutex_unlock(&encoder_setting->mutexRead);
-	pthread_mutex_lock(&encoder_setting->mutexWrite);
-	
-    // Audio Frames
-
-    // int ret = IMP_AI_PollingFrame(audio_device_id, audio_channel_id, 1000);
-    // if (ret < 0) {
-    //   log_error("Error polling for audio frame");
-    //   return -1;
-    // }
-
-    // ret = IMP_AI_GetFrame(audio_device_id, audio_channel_id, &audio_frame, BLOCK);
-    // if (ret < 0) {
-    //   log_error("Error getting audio frame data");
-    //   return -1;
-    // }
-
-    // num_samples = audio_frame.len / sizeof(short);
-
-
-
-    // memcpy(pcm_audio_data, (void *)audio_frame.virAddr, audio_frame.len);
-
-
-    // ret = IMP_AI_ReleaseFrame(audio_device_id, audio_channel_id, &audio_frame);
-    // if(ret != 0) {
-    //   log_error("Error releasing audio frame");
-    //   return -1;
-    // }
-
-    // if (ret = snd_pcm_writei(pcm_handle, pcm_audio_data, num_samples) == -EPIPE) {
-    //   // log_error("Buffer overrun when writing to ALSA loopback device");
-    //   snd_pcm_prepare(pcm_handle);
-    // } else if (ret < 0) {
-    //   log_error("ERROR. Can't write to PCM device. %s\n", snd_strerror(ret));
-    // }
-
-
-    // Video Frames
-
-    if (frames_written == 200) {
-      gettimeofday(&tval_after, NULL);
-      timersub(&tval_after, &tval_before, &tval_result);
-
-      elapsed_seconds =  (long int)tval_result.tv_sec + ((long int)tval_result.tv_usec / 1000000);
-
-      current_fps = 200 / elapsed_seconds;
-      log_info("Current FPS: %.2f / Channel %d", current_fps, encoder_setting->channel);
-      //log_info("Obtained %d 16-bit samples from this specific audio frame", num_samples);
-
-
-      // IMPEncoderCHNStat encoder_status;
-
-      // IMP_Encoder_Query(encoder_setting->channel, &encoder_status);
-
-      // log_info("Registered: %u", encoder_status.registered);
-      // log_info("Work done (0 is running, 1 is not running): %u", encoder_status.work_done);
-      // log_info("Number of images to be encoded: %u", encoder_status.leftPics);
-      // log_info("Number of bytes remaining in the stream buffer: %u", encoder_status.leftStreamBytes);
-
-      frames_written = 0;
-      gettimeofday(&tval_before, NULL);
-    }
-
-
-    ret = IMP_Encoder_PollingStream(encoder_setting->channel, 1000);
-    if (ret < 0) {
-      log_error("Timeout while polling for stream on channel %d.", encoder_setting->channel);
-	  pthread_mutex_destroy(&encoder_setting->mutexRead);
-	  pthread_mutex_destroy(&encoder_setting->mutexWrite);
-      continue;
-    }
-
-
-    // Get H264 Stream on channel and enable a blocking call
-    ret = IMP_Encoder_GetStream(encoder_setting->channel, &stream, 1);
-    if (ret < 0) {
-      log_error("IMP_Encoder_GetStream() failed");
-      return -1;
-    }
-
-    stream_packets = stream.packCount;
-
-    total = 0;
-    stream_chunk = malloc(1);
-    if (stream_chunk == NULL) {
-      log_error("Malloc returned NULL.");
-      return -1;
-    }
-
-    for (i = 0; i < stream_packets; i++) {
-      log_debug("Processing packet %d of size %d.", total, i, stream.pack[i].length);
-
-      temp_chunk = realloc(stream_chunk, total + stream.pack[i].length);
-
-      if (temp_chunk == NULL) {
-        log_error("realloc returned NULL for request of size: %d", total);
-        return -1;
-      }
-
-      log_debug("Allocated an additional %d bytes for packet %d.", total + stream.pack[i].length, i);
-
-      // Allocating worked
-      stream_chunk = temp_chunk;
-      temp_chunk = NULL;
-
-      memcpy(&stream_chunk[total], (void *)stream.pack[i].virAddr, stream.pack[i].length);
-      total = total + stream.pack[i].length;
-
-      log_debug("Total size of chunk after concatenating: %d bytes.", total);
-    }
-
-    // Write out to the V4L2 device (for example /dev/video0)
-    ret = write(v4l2_fd, (void *)stream_chunk, total);
-    if (ret != total) {
-      log_error("Stream write error: %s", ret);
-      return -1;
-    }
-  
-    free(stream_chunk);
-
-    IMP_Encoder_ReleaseStream(encoder_setting->channel, &stream);
-
-    frames_written = frames_written + 1;
-
-    usleep(1000 * 1000 * delay_in_seconds);
-	
-	pthread_mutex_unlock(&encoder_setting->mutexWrite);
-	pthread_mutex_lock(&encoder_setting->mutexRead);
-	
-	if (encoder_setting->reload_flag == 1) {
-		reload_encoder_config(encoder_setting);
-		encoder_setting->reload_flag = 0;
+	struct v4l2_capability vid_caps;
+	struct v4l2_format vid_format;
+
+	IMPEncoderStream stream;
+
+	uint8_t *stream_chunk;
+	uint8_t *temp_chunk;
+
+	// Audio device
+	int audio_device_id = 1;
+	int audio_channel_id = 0;
+	IMPAudioFrame audio_frame;
+	int num_samples;
+	short pcm_audio_data[1024];
+
+	// h264 NAL unit stuff
+
+	// h264_stream_t *h = h264_new();
+	// int nal_start, nal_end;
+	// uint8_t* buf;
+	// int len;
+
+	log_info("Opening V4L2 device: %s ", v4l2_device_path);
+	int v4l2_fd = open(v4l2_device_path, O_WRONLY, 0777);
+	if (v4l2_fd < 0) {
+		log_error("Failed to open V4L2 device: %s", v4l2_device_path);
+		return -1;
 	}
-  }
-  
-	pthread_mutex_destroy(&encoder_setting->mutexRead);
-	pthread_mutex_destroy(&encoder_setting->mutexWrite);
 
-  ret = IMP_Encoder_StopRecvPic(encoder_setting->channel);
-  if (ret < 0) {
-    log_error("IMP_Encoder_StopRecvPic(%d) failed", encoder_setting->channel);
-    return -1;
-  }
+	// ret = ioctl(v4l2_fd, VIDIOC_QUERYCAP, &vid_caps);
+
+	memset(&vid_format, 0, sizeof(vid_format));
+	vid_format.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+	vid_format.fmt.pix.width = video_width;
+	vid_format.fmt.pix.height = video_height;
+
+	if (strcmp(encoder_setting->payload_type, "PT_H264") == 0) {
+		vid_format.fmt.pix.pixelformat = V4L2_PIX_FMT_H264;
+		vid_format.fmt.pix.sizeimage = 0;
+		vid_format.fmt.pix.field = V4L2_FIELD_NONE;
+		vid_format.fmt.pix.bytesperline = 0;
+		vid_format.fmt.pix.colorspace = V4L2_PIX_FMT_YUV420;
+	}
+	else if(strcmp(encoder_setting->payload_type, "PT_JPEG") == 0) {
+		vid_format.fmt.pix.pixelformat = V4L2_PIX_FMT_JPEG;
+		// TODO: Is this correct? Doc says needs to be set to maximum size of image
+		vid_format.fmt.pix.sizeimage = 0;
+		vid_format.fmt.pix.field = V4L2_FIELD_NONE;
+		vid_format.fmt.pix.bytesperline = 0;
+		vid_format.fmt.pix.colorspace = V4L2_COLORSPACE_JPEG;
+	}
+	else {
+		log_error("Unknown payload type: %s", encoder_setting->payload_type);
+		return -1;
+	}
+
+	ret = ioctl(v4l2_fd, VIDIOC_S_FMT, &vid_format);
+	if (ret < 0) {
+		log_error("Unable to set V4L2 device video format: %d", ret);
+		return -1;
+	}
+
+	ret = ioctl(v4l2_fd, VIDIOC_STREAMON, &vid_format);
+	if (ret < 0) {
+		log_error("Unable to perform VIDIOC_STREAMON: %d", ret);
+		return -1;
+	}
+	
+	log_info("V4L2 device opened and setup complete: VIDIOC_STREAMON");
+	log_info("Sleeping 2 seconds before starting to send frames...");
+
+	ret = IMP_Encoder_StartRecvPic(encoder_setting->channel);
+	if (ret < 0) {
+		log_error("IMP_Encoder_StartRecvPic(%d) failed.", encoder_setting->channel);
+		return -1;
+	}
+	
+	delay_in_microseconds = (unsigned long) (1000 * 1000 * encoder_setting->frame_rate_denominator) / encoder_setting->frame_rate_numerator;
+
+	// Every set number of frames calculate out how many frames per second we are getting
+	current_fps = 0;
+	frames_written = 0;
+	gettimeofday(&tval_before, NULL);
+
+	while(!sigint_received) {
+		pthread_mutex_lock(&encoder_setting->mutex);
+	
+		if (encoder_setting->reload_flag == 1) {
+			reload_encoder_config(encoder_setting);
+			
+			delay_in_microseconds = (unsigned long) (1000 * 1000 * encoder_setting->frame_rate_denominator) / encoder_setting->frame_rate_numerator;
+			
+			encoder_setting->reload_flag = 0;
+		}
+
+		// Audio Frames
+
+		// int ret = IMP_AI_PollingFrame(audio_device_id, audio_channel_id, 1000);
+		// if (ret < 0) {
+		//   log_error("Error polling for audio frame");
+		//   return -1;
+		// }
+
+		// ret = IMP_AI_GetFrame(audio_device_id, audio_channel_id, &audio_frame, BLOCK);
+		// if (ret < 0) {
+		//   log_error("Error getting audio frame data");
+		//   return -1;
+		// }
+
+		// num_samples = audio_frame.len / sizeof(short);
 
 
+		// memcpy(pcm_audio_data, (void *)audio_frame.virAddr, audio_frame.len);
+
+
+		// ret = IMP_AI_ReleaseFrame(audio_device_id, audio_channel_id, &audio_frame);
+		// if(ret != 0) {
+		//   log_error("Error releasing audio frame");
+		//   return -1;
+		// }
+
+		// if (ret = snd_pcm_writei(pcm_handle, pcm_audio_data, num_samples) == -EPIPE) {
+		//   // log_error("Buffer overrun when writing to ALSA loopback device");
+		//   snd_pcm_prepare(pcm_handle);
+		// } else if (ret < 0) {
+		//   log_error("ERROR. Can't write to PCM device. %s\n", snd_strerror(ret));
+		// }
+
+		// Video Frames
+
+		if (frames_written == 200) {
+			gettimeofday(&tval_after, NULL);
+			timersub(&tval_after, &tval_before, &tval_result);
+
+			elapsed_seconds = (long int)tval_result.tv_sec + ((long int)tval_result.tv_usec / 1000000);
+
+			current_fps = 200 / elapsed_seconds;
+			log_info("Current FPS: %.2f / Channel %d", current_fps, encoder_setting->channel);
+			//log_info("Obtained %d 16-bit samples from this specific audio frame", num_samples);
+
+			// IMPEncoderCHNStat encoder_status;
+
+			// IMP_Encoder_Query(encoder_setting->channel, &encoder_status);
+
+			// log_info("Registered: %u", encoder_status.registered);
+			// log_info("Work done (0 is running, 1 is not running): %u", encoder_status.work_done);
+			// log_info("Number of images to be encoded: %u", encoder_status.leftPics);
+			// log_info("Number of bytes remaining in the stream buffer: %u", encoder_status.leftStreamBytes);
+
+			frames_written = 0;
+			gettimeofday(&tval_before, NULL);
+		}
+
+		// obs: This function times the frames
+		ret = IMP_Encoder_PollingStream(encoder_setting->channel, 1050);
+		if (ret < 0) {
+			log_error("Timeout while polling for stream on channel %d.", encoder_setting->channel);
+			pthread_mutex_destroy(&encoder_setting->mutex);
+			continue;
+		}
+		
+		// PT_JPEG doesn't time its frames, so we have to sleep for a bit
+		if(strcmp(encoder_setting->payload_type, "PT_JPEG") == 0)
+			usleep(delay_in_microseconds);
+
+		// Get H264 Stream on channel and enable a blocking call
+		ret = IMP_Encoder_GetStream(encoder_setting->channel, &stream, 1);
+		if (ret < 0) {
+			log_error("IMP_Encoder_GetStream() failed");
+			return -1;
+		}
+
+		stream_packets = stream.packCount;
+
+		total = 0;
+		stream_chunk = malloc(1);
+		if (stream_chunk == NULL) {
+			log_error("Malloc returned NULL.");
+			return -1;
+		}
+
+		for (i = 0; i < stream_packets; i++) {
+			log_debug("Processing packet %d of size %d.", total, i, stream.pack[i].length);
+
+			temp_chunk = realloc(stream_chunk, total + stream.pack[i].length);
+
+			if (temp_chunk == NULL) {
+				log_error("realloc returned NULL for request of size: %d", total);
+				return -1;
+			}
+
+			log_debug("Allocated an additional %d bytes for packet %d.", total + stream.pack[i].length, i);
+
+			// Allocating worked
+			stream_chunk = temp_chunk;
+			temp_chunk = NULL;
+
+			memcpy(&stream_chunk[total], (void *)stream.pack[i].virAddr, stream.pack[i].length);
+			total = total + stream.pack[i].length;
+
+			log_debug("Total size of chunk after concatenating: %d bytes.", total);
+		}
+
+		// Write out to the V4L2 device (for example /dev/video0)
+		ret = write(v4l2_fd, (void *)stream_chunk, total);
+		if (ret != total) {
+			log_error("Stream write error: %s", ret);
+			return -1;
+		}
+
+		free(stream_chunk);
+
+		IMP_Encoder_ReleaseStream(encoder_setting->channel, &stream);
+
+		frames_written = frames_written + 1;
+		
+		pthread_mutex_unlock(&encoder_setting->mutex);
+	}
+
+	pthread_mutex_destroy(&encoder_setting->mutex);
+
+	ret = IMP_Encoder_StopRecvPic(encoder_setting->channel);
+	if (ret < 0) {
+		log_error("IMP_Encoder_StopRecvPic(%d) failed", encoder_setting->channel);
+		return -1;
+	}
 }
 
-void *isp_settings_thread(void *isp_settings_) {
+void *isp_settings_thread(void *isp_settings_)
+{
 	ISPSettings *isp_settings = (ISPSettings*) isp_settings_;
 	
 	int ret;
@@ -1147,8 +1084,8 @@ void *isp_settings_thread(void *isp_settings_) {
 		log_error("sem_init failed on isp settings");
 		return NULL;
 	}
-	
-	while(!sigint_received) {		
+
+	while(!sigint_received) {
 		if (isp_settings->night_mode_flag == 1) {
 			reload_night_vision(isp_settings);
 			isp_settings->night_mode_flag = 0;
@@ -1160,50 +1097,51 @@ void *isp_settings_thread(void *isp_settings_) {
 		}
 		
 		usleep(1000 * 100); // can be removed, it's just a precaution
-		
+
 		sem_wait(&isp_settings->semaphore);
 	}
-	
+
 	sem_destroy(&isp_settings->semaphore);
 }
 
 int sensor_cleanup(IMPSensorInfo *sensor_info)
 {
-  int ret = 0;
+	int ret = 0;
 
-  log_info("Cleaning up sensor.");
+	log_info("Cleaning up sensor.");
 
-  IMP_System_Exit();
+	IMP_System_Exit();
 
-  ret = IMP_ISP_DisableSensor();
-  if(ret < 0){
-    log_error("failed to EnableSensor");
-    return -1;
-  }
+	ret = IMP_ISP_DisableSensor();
+	if(ret < 0){
+		log_error("failed to EnableSensor");
+		return -1;
+	}
 
-  ret = IMP_ISP_DelSensor(sensor_info);
-  if(ret < 0){
-    log_error("failed to AddSensor");
-    return -1;
-  }
+	ret = IMP_ISP_DelSensor(sensor_info);
+	if(ret < 0){
+		log_error("failed to AddSensor");
+		return -1;
+	}
 
-  ret = IMP_ISP_DisableTuning();
-  if(ret < 0){
-    log_error("IMP_ISP_DisableTuning failed");
-    return -1;
-  }
+	ret = IMP_ISP_DisableTuning();
+	if(ret < 0){
+		log_error("IMP_ISP_DisableTuning failed");
+		return -1;
+	}
 
-  if(IMP_ISP_Close()){
-    log_error("failed to open ISP");
-    return -1;
-  }
+	if(IMP_ISP_Close()){
+		log_error("failed to open ISP");
+		return -1;
+	}
 
-  log_info("Sensor cleanup success.");
+	log_info("Sensor cleanup success.");
 
-  return 0;
+	return 0;
 }
 
-void reload_night_vision(ISPSettings *isp_settings) {
+void reload_night_vision(ISPSettings *isp_settings)
+{
 	int ret;
 	IMPISPRunningMode isprunningmode;
 	IMPISPSceneMode sceneMode;
@@ -1223,16 +1161,19 @@ void reload_night_vision(ISPSettings *isp_settings) {
 	ret = IMP_ISP_Tuning_SetISPRunningMode(isprunningmode);
 	if (ret) {
 		log_error("IMP_ISP_Tuning_SetISPRunningMode failed");
+		return;
 	}
 	
 	ret = IMP_ISP_Tuning_SetSceneMode(sceneMode);
 	if (ret) {
 		log_error("IMP_ISP_Tuning_SetSceneMode failed");
+		return;
 	}
 	
 	ret = IMP_ISP_Tuning_SetColorfxMode(colormode);
 	if (ret) {
 		log_error("IMP_ISP_Tuning_SetColorfxMode failed");
+		return;
 	}
 	
 	log_info("Night mode updated. (%d)", isp_settings->night_mode);
@@ -1240,23 +1181,23 @@ void reload_night_vision(ISPSettings *isp_settings) {
 
 void reload_flip_image(ISPSettings *isp_settings) {
 	int ret;
-	
+
 	IMPISPTuningOpsMode tuning_ops_mode;
 	tuning_ops_mode = IMPISP_TUNING_OPS_MODE_DISABLE;
-	
+
 	if (isp_settings->flip_image == 1)
 		tuning_ops_mode = IMPISP_TUNING_OPS_MODE_ENABLE;
-	
+
 	ret = IMP_ISP_Tuning_SetISPVflip(tuning_ops_mode);
 	if (ret) {
 		log_error("IMP_ISP_Tuning_SetISPVflip failed");
 	}
-	
+
 	ret = IMP_ISP_Tuning_SetISPHflip(tuning_ops_mode);
 	if (ret) {
 		log_error("IMP_ISP_Tuning_SetISPHflip failed");
 	}
-	
+
 	log_info("Flip image mode updated. (%d)", isp_settings->flip_image);
 }
 

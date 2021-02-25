@@ -14,11 +14,11 @@
 #define FTOKDIR "/usr"
 #define FTOKPROJID 1
 
-#define MAX_FRAMESOURCES		4
-#define MAX_ENCODERS			10
-#define MAX_BINDINGS			10
-#define MAX_OSDGROUPS			4
-#define MAX_OSDITEMS 			16
+#define MAX_FRAMESOURCES 4
+#define MAX_ENCODERS 10
+#define MAX_BINDINGS 10
+#define MAX_OSDGROUPS 4
+#define MAX_OSDITEMS 16
 
 typedef struct frame_source {
 	int id;
@@ -83,8 +83,7 @@ typedef struct encoder_setting {
 	IMPEncoderCHNAttr chn_attr;
 	
 	pthread_t thread_id;
-	pthread_mutex_t mutexWrite;
-	pthread_mutex_t mutexRead;
+	pthread_mutex_t mutex;
 	int reload_flag;
 
 } EncoderSetting;
@@ -167,8 +166,7 @@ typedef struct osd_item {
 	int update_interval;
 	
 	pthread_t thread_id;
-	pthread_mutex_t mutexWrite;
-	pthread_mutex_t mutexRead;
+	pthread_mutex_t mutex;
 	int reload_flag;
 } OsdItem;
 

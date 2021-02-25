@@ -46,7 +46,7 @@ int main(int argc, char *argv[]) {
 	int opt_osd_item = -1;
 	char opt_key[64] = "";
 	char opt_value[64] = "";
- 
+
 	while ((opt = getopt(argc, argv, "hse:g:i:k:v:o")) != EOF) {
 		switch(opt) {
 			case 'h':
@@ -95,12 +95,12 @@ int main(int argc, char *argv[]) {
 	*/
 	
 	// check if videocapture is running
-	char buf = ' ';
+	char vbuf[2] = "";
 	FILE *cmd_pipe = popen("pidof videocapture", "r");
-	fgets(&buf, sizeof(buf), cmd_pipe);
+	fgets(vbuf, sizeof(vbuf), cmd_pipe);
 	pclose(cmd_pipe);
 		
-	if(buf == 0) {
+	if (vbuf[0] == '\0') {
 		printf("videocapture process not running!\n");
 		return -1;
 	}
@@ -193,8 +193,7 @@ int main(int argc, char *argv[]) {
 			goto err;
 		}
 		
-		pthread_mutex_lock(&encoder->mutexRead);
-		pthread_mutex_lock(&encoder->mutexWrite);
+		pthread_mutex_lock(&encoder->mutex);
 		
 		if (strcmp(opt_key, "frame_rate_numerator") == 0) {
 			SETGETCONFIGINT(encoder->frame_rate_numerator);
@@ -231,8 +230,7 @@ int main(int argc, char *argv[]) {
 		}
 		
 		encoder->reload_flag = 1;
-		pthread_mutex_unlock(&encoder->mutexWrite);
-		pthread_mutex_unlock(&encoder->mutexRead);
+		pthread_mutex_unlock(&encoder->mutex);
 	}	
 	else if (opt_osd_group != -1 && opt_osd_item != -1) {
 		// OSD settings
@@ -264,8 +262,7 @@ int main(int argc, char *argv[]) {
 			goto err;
 		}
 		
-		pthread_mutex_lock(&osd_item->mutexRead);
-		pthread_mutex_lock(&osd_item->mutexWrite);
+		pthread_mutex_lock(&osd_item->mutex);
 		
 		if (strcmp(opt_key, "show") == 0) {
 			SETGETCONFIGBOOL(osd_item->show);
@@ -338,11 +335,10 @@ int main(int argc, char *argv[]) {
 		}
 		
 		osd_item->reload_flag = 1;
-		pthread_mutex_unlock(&osd_item->mutexWrite);
-		pthread_mutex_unlock(&osd_item->mutexRead);
+		pthread_mutex_unlock(&osd_item->mutex);
 	}
 
-    return EXIT_SUCCESS;
+	return EXIT_SUCCESS;
 	
 err:
 	shmdt(camera_config);
@@ -383,7 +379,7 @@ void usage(char *command) {
 	fprintf(stderr, "\tframe_qp_step int\n");
 	fprintf(stderr, "\tgop_qp_step int\n");
 
-    fprintf(stderr, "\nOSD(on-screen display) [-g group_id -i osd_id]: (-k 'key' -v 'value')\n");
+	fprintf(stderr, "\nOSD(on-screen display) [-g group_id -i osd_id]: (-k 'key' -v 'value')\n");
 	fprintf(stderr, "\tshow int[0/1]\n");
 	fprintf(stderr, "\tpos_x int\n");
 	fprintf(stderr, "\tpos_y int\n");
