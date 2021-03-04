@@ -239,6 +239,19 @@ int populate_framesource(FrameSource *framesource, cJSON* json)
   return 0;
 }
 
+
+void print_general_settings(CameraConfig *camera_config)
+{
+  char buffer[1024];
+  snprintf(buffer, sizeof(buffer), "general_settings: \n"
+                   "flip_vertical: %d\n"
+                   "flip_horizontal: %d\n",
+                    camera_config->flip_vertical,
+                    camera_config->flip_horizontal
+                    );
+  log_info("%s", buffer);  
+}
+
 void print_framesource(FrameSource *framesource)
 {
   char buffer[1024];

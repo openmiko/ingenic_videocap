@@ -109,6 +109,9 @@ typedef struct {
 	Binding bindings[MAX_BINDINGS];
 	uint32_t num_bindings;
 
+	uint32_t flip_vertical;
+	uint32_t flip_horizontal;
+
 } CameraConfig;
 
 

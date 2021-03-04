@@ -54,6 +54,7 @@
 
 int initialize_sensor(IMPSensorInfo *sensor_info);
 int initialize_audio();
+int configure_video_tuning_parameters(CameraConfig *camera_config);
 int create_encoding_group(int group_id);
 int setup_encoding_engine(FrameSource* frame_source, EncoderSetting* encoder_setting);
 int output_v4l2_frames(EncoderSetting *encoder_setting);
