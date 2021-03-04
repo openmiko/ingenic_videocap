@@ -97,8 +97,6 @@ int initialize_sensor(IMPSensorInfo *sensor_info)
 		return -1;
 	}
 
-
-
   ret = IMP_ISP_Tuning_SetWDRAttr(IMPISP_TUNING_OPS_MODE_DISABLE);
   if(ret < 0){
     log_error("failed to set WDR\n");
@@ -109,7 +107,33 @@ int initialize_sensor(IMPSensorInfo *sensor_info)
 	log_info("Sensor succesfully initialized.");
 
 	return 0;
+}
 
+int configure_video_tuning_parameters(CameraConfig *camera_config)
+{
+  log_info("Configuring video tuning parameters");
+
+  // Sharpness
+  IMP_ISP_Tuning_SetSharpness(50);
+
+  // Image flipping
+  if (camera_config->flip_vertical) {
+    log_info("Flipping image vertically");
+    IMP_ISP_Tuning_SetISPVflip(IMPISP_TUNING_OPS_MODE_ENABLE);
+  }
+  else {
+    IMP_ISP_Tuning_SetISPVflip(IMPISP_TUNING_OPS_MODE_DISABLE);    
+  }
+
+  if (camera_config->flip_horizontal) {
+    log_info("Flipping image horizontally");
+    IMP_ISP_Tuning_SetISPHflip(IMPISP_TUNING_OPS_MODE_ENABLE);
+  }
+  else {
+    IMP_ISP_Tuning_SetISPHflip(IMPISP_TUNING_OPS_MODE_DISABLE);    
+  }
+
+  return 0;
 }
 
 int initialize_audio()

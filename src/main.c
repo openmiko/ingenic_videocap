@@ -240,9 +240,36 @@ int load_bindings(cJSON *json, CameraConfig *camera_config)
   }
 }
 
+int load_general_settings(cJSON *json, CameraConfig *camera_config)
+{
+  int i;
+  cJSON *json_stream;
+  cJSON *json_general_settings;
+
+  log_info("Loading general settings");
+
+  // Parse general settings
+  json_general_settings = cJSON_GetObjectItemCaseSensitive(json, "general_settings");
+  if (json_general_settings == NULL) {
+    log_error("Key 'general_settings' not found in JSON.");
+    return -1;
+  }
+
+  cJSON *flip_vertical = cJSON_GetObjectItemCaseSensitive(json_general_settings, "flip_vertical");
+  cJSON *flip_horizontal = cJSON_GetObjectItemCaseSensitive(json_general_settings, "flip_horizontal");
+
+  camera_config->flip_vertical = flip_vertical->valueint;
+  camera_config->flip_horizontal = flip_horizontal->valueint;
+
+  print_general_settings(camera_config);
+
+  return 0;
+}
+  
 
 void load_configuration(cJSON *json, CameraConfig *camera_config)
 {
+  load_general_settings(json, camera_config);
   load_framesources(json, camera_config);
   load_encoders(json, camera_config);
   load_bindings(json, camera_config);
@@ -402,10 +429,8 @@ int main(int argc, const char *argv[])
   }
   fclose(fp);
 
-
   initialize_sensor(&sensor_info);
   initialize_audio();
-
 
   // Parsing the JSON file
   json = cJSON_ParseWithLength(file_contents, file_size);
@@ -422,7 +447,6 @@ int main(int argc, const char *argv[])
     return -1;
   }
 
-
   ret = IMP_IVS_CreateGroup(0);
   if (ret < 0) {
     log_error("IMP_IVS_CreateGroup failed.");
@@ -430,7 +454,7 @@ int main(int argc, const char *argv[])
   }
 
   load_configuration(json, &camera_config);
-
+  configure_video_tuning_parameters(&camera_config);
   enable_framesources(&camera_config);
 
 
@@ -440,10 +464,6 @@ int main(int argc, const char *argv[])
   } 
 
   
-  IMP_ISP_Tuning_SetSharpness(50);
-
-
-
   // This will suspend the main thread until the streams quit
   start_frame_producer_threads(&camera_config);
 
@@ -462,67 +482,3 @@ err:
 
   return 0;
 }
-
-
-// static int sample_ivs_move_start(int grp_num, int chn_num, IMPIVSInterface **interface)
-// {
-//   int ret = 0;
-//   IMP_IVS_MoveParam param;
-//   int i = 0, j = 0;
-
-//   memset(&param, 0, sizeof(IMP_IVS_MoveParam));
-//   param.skipFrameCnt = 5;
-//   param.frameInfo.width = SENSOR_WIDTH_SECOND;
-//   param.frameInfo.height = SENSOR_HEIGHT_SECOND;
-//   param.roiRectCnt = 4;
-
-//   for(i=0; i<param.roiRectCnt; i++){
-//     param.sense[i] = 4;
-//   }
-
-//   /* printf("param.sense=%d, param.skipFrameCnt=%d, param.frameInfo.width=%d, param.frameInfo.height=%d\n", param.sense, param.skipFrameCnt, param.frameInfo.width, param.frameInfo.height); */
-//   for (j = 0; j < 2; j++) {
-//     for (i = 0; i < 2; i++) {
-//       if((i==0)&&(j==0)){
-//       param.roiRect[j * 2 + i].p0.x = i * param.frameInfo.width /* / 2 */;
-//       param.roiRect[j * 2 + i].p0.y = j * param.frameInfo.height /* / 2 */;
-//       param.roiRect[j * 2 + i].p1.x = (i + 1) * param.frameInfo.width /* / 2 */ - 1;
-//       param.roiRect[j * 2 + i].p1.y = (j + 1) * param.frameInfo.height /* / 2 */ - 1;
-//       printf("(%d,%d) = ((%d,%d)-(%d,%d))\n", i, j, param.roiRect[j * 2 + i].p0.x, param.roiRect[j * 2 + i].p0.y,param.roiRect[j * 2 + i].p1.x, param.roiRect[j * 2 + i].p1.y);
-//       }
-//       else
-//         {
-//             param.roiRect[j * 2 + i].p0.x = param.roiRect[0].p0.x;
-//       param.roiRect[j * 2 + i].p0.y = param.roiRect[0].p0.y;
-//       param.roiRect[j * 2 + i].p1.x = param.roiRect[0].p1.x;;
-//       param.roiRect[j * 2 + i].p1.y = param.roiRect[0].p1.y;;
-//       printf("(%d,%d) = ((%d,%d)-(%d,%d))\n", i, j, param.roiRect[j * 2 + i].p0.x, param.roiRect[j * 2 + i].p0.y,param.roiRect[j * 2 + i].p1.x, param.roiRect[j * 2 + i].p1.y);
-//         }
-//     }
-//   }
-//   *interface = IMP_IVS_CreateMoveInterface(&param);
-//   if (*interface == NULL) {
-//     IMP_LOG_ERR(TAG, "IMP_IVS_CreateGroup(%d) failed\n", grp_num);
-//     return -1;
-//   }
-
-//   ret = IMP_IVS_CreateChn(chn_num, *interface);
-//   if (ret < 0) {
-//     IMP_LOG_ERR(TAG, "IMP_IVS_CreateChn(%d) failed\n", chn_num);
-//     return -1;
-//   }
-
-//   ret = IMP_IVS_RegisterChn(grp_num, chn_num);
-//   if (ret < 0) {
-//     IMP_LOG_ERR(TAG, "IMP_IVS_RegisterChn(%d, %d) failed\n", grp_num, chn_num);
-//     return -1;
-//   }
-
-//   ret = IMP_IVS_StartRecvPic(chn_num);
-//   if (ret < 0) {
-//     IMP_LOG_ERR(TAG, "IMP_IVS_StartRecvPic(%d) failed\n", chn_num);
-//     return -1;
-//   }
-
-//   return 0;
-// }
