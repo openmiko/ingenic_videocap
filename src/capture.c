@@ -155,7 +155,7 @@ int initialize_audio()
   audio_settings.frmNum = MAX_AUDIO_FRAME_NUM;
 
   // Number of sampling points per frame
-  audio_settings.numPerFrm = 960;
+  audio_settings.numPerFrm = 1920;
   audio_settings.chnCnt = 1;
 
 
@@ -215,10 +215,23 @@ int initialize_audio()
   }  
 
 
+  // Enable hardware noise suppression
+  // 4 levels to pick from:
+  //
+  // NS_LOW  
+  // NS_MODERATE
+  // NS_HIGH
+  // NS_VERYHIGH
+  ret = IMP_AI_EnableNs(&audio_settings, NS_HIGH);
+  if(ret != 0) {
+    log_error("Error enable hardware noise suppression.");
+    return -1;
+  }  
 
   // ALSA loopback device setup
   // Found good sample code here: https://gist.github.com/ghedo/963382/98f730d61dad5b6fdf0c4edb7a257c5f9700d83b
 
+  // The last argument of 0 indicates I want blocking mode
   ret = snd_pcm_open(&pcm_handle, "hw:0,0", SND_PCM_STREAM_PLAYBACK, 0);
   if(ret != 0) {
     log_error("Error opening ALSA PCM loopback device.");
@@ -234,6 +247,7 @@ int initialize_audio()
 
   audio_channels = 1;
   sample_rate = 48000;
+
 
   /* Set parameters */
   if (ret = snd_pcm_hw_params_set_access(pcm_handle, pcm_hw_params, SND_PCM_ACCESS_RW_INTERLEAVED) < 0) {    
@@ -252,9 +266,29 @@ int initialize_audio()
     log_error("ERROR: Can't set rate. %s\n", snd_strerror(ret));  
   }
 
+
+  // snd_pcm_uframes_t frames = 1920;
+
+  // if (ret = snd_pcm_hw_params_set_period_size(pcm_handle, pcm_hw_params, frames, 0) < 0) {
+  //   log_error("ERROR: Can't set period size. %s\n", snd_strerror(ret));
+  // }
+
+
+
+  /* Set number of periods. Periods used to be called fragments. */ 
+  // if (ret = snd_pcm_hw_params_set_periods(pcm_handle, pcm_hw_params, 2, 0) < 0) {
+  //   log_error("ERROR: Can't set periods. %s\n", snd_strerror(ret));
+  // }
+
+  // /* Set buffer size (in frames). The resulting latency is given by */
+  // /* latency = periodsize * periods / (rate * bytes_per_frame)     */
+  // if (ret = snd_pcm_hw_params_set_buffer_size(pcm_handle, pcm_hw_params, 960 * 2) < 0) {
+  //   log_error("ERROR: Can't set buffer size. %s\n", snd_strerror(ret));  
+  // }
+
   /* Write parameters */
   if (ret = snd_pcm_hw_params(pcm_handle, pcm_hw_params) < 0) {    
-    log_error("ERROR: Can't set harware parameters. %s\n", snd_strerror(ret));
+    log_error("ERROR: Can't set hardware parameters. %s\n", snd_strerror(ret));
   }
 
 
@@ -270,6 +304,8 @@ int initialize_audio()
 
 
   log_info("Audio initialization complete");
+
+  // initialize_capture_side_audio();
 
   return 0;
 }
@@ -482,6 +518,57 @@ void print_stream_settings(StreamSettings *stream_settings)
   log_info("%s", buffer);
 }
 
+// This is the entrypoint for the audio thread
+void *audio_thread_entry_start(void *audio_thread_params)
+{
+  int ret;
+
+  // Audio device
+  int audio_device_id = 1;
+  int audio_channel_id = 0;
+  IMPAudioFrame audio_frame;
+  int num_samples;
+  short pcm_audio_data[1920 * 2];
+
+  while(!sigint_received) {
+
+    ret = IMP_AI_PollingFrame(audio_device_id, audio_channel_id, 1000);
+    if (ret < 0) {
+      log_error("Error or timeout polling for audio frame");
+      pthread_exit(NULL);
+    }
+
+    ret = IMP_AI_GetFrame(audio_device_id, audio_channel_id, &audio_frame, BLOCK);
+    if (ret < 0) {
+      log_error("Error getting audio frame data");
+      pthread_exit(NULL);
+    }
+
+    num_samples = audio_frame.len / sizeof(short);
+
+    memcpy(pcm_audio_data, (void *)audio_frame.virAddr, audio_frame.len );
+
+    ret = IMP_AI_ReleaseFrame(audio_device_id, audio_channel_id, &audio_frame);
+    if(ret != 0) {
+      log_error("Error releasing audio frame");
+      pthread_exit(NULL);
+    }
+
+    ret = snd_pcm_writei(pcm_handle, pcm_audio_data, num_samples);
+
+    if ( ret == -EPIPE) {
+      log_error("Buffer underrun when writing to ALSA loopback device");
+      snd_pcm_prepare(pcm_handle);
+    }
+
+    if (ret < 0) {
+      log_error("ERROR. Can't write to PCM device. %s\n", snd_strerror(ret));
+    }
+
+  }
+}
+
+
 
 // This is the entrypoint for the threads
 void *produce_frames(void *encoder_thread_params_ptr)
@@ -513,7 +600,7 @@ int output_v4l2_frames(EncoderSetting *encoder_setting)
   float elapsed_seconds = 0;
   struct timeval tval_before, tval_after, tval_result;
   float delay_in_seconds = 0;
-
+  float adjusted_delay_in_seconds = 0;
 
 
   struct v4l2_capability vid_caps;
@@ -524,12 +611,6 @@ int output_v4l2_frames(EncoderSetting *encoder_setting)
   uint8_t *stream_chunk;
   uint8_t *temp_chunk;
 
-  // Audio device
-  int audio_device_id = 1;
-  int audio_channel_id = 0;
-  IMPAudioFrame audio_frame;
-  int num_samples;
-  short pcm_audio_data[1024];
 
   // h264 NAL unit stuff
 
@@ -615,45 +696,18 @@ int output_v4l2_frames(EncoderSetting *encoder_setting)
   frames_written = 0;
   gettimeofday(&tval_before, NULL);
 
+
+  // int samples_file;
+  // samples_file = fopen("/tmp/samples.pcm", "w");
+
+  clock_t start, end;
+  double cpu_time_used;
+
+
   while(!sigint_received) {
-
-    // Audio Frames
-
-    // int ret = IMP_AI_PollingFrame(audio_device_id, audio_channel_id, 1000);
-    // if (ret < 0) {
-    //   log_error("Error polling for audio frame");
-    //   return -1;
-    // }
-
-    // ret = IMP_AI_GetFrame(audio_device_id, audio_channel_id, &audio_frame, BLOCK);
-    // if (ret < 0) {
-    //   log_error("Error getting audio frame data");
-    //   return -1;
-    // }
-
-    // num_samples = audio_frame.len / sizeof(short);
-
-
-
-    // memcpy(pcm_audio_data, (void *)audio_frame.virAddr, audio_frame.len);
-
-
-    // ret = IMP_AI_ReleaseFrame(audio_device_id, audio_channel_id, &audio_frame);
-    // if(ret != 0) {
-    //   log_error("Error releasing audio frame");
-    //   return -1;
-    // }
-
-    // if (ret = snd_pcm_writei(pcm_handle, pcm_audio_data, num_samples) == -EPIPE) {
-    //   // log_error("Buffer overrun when writing to ALSA loopback device");
-    //   snd_pcm_prepare(pcm_handle);
-    // } else if (ret < 0) {
-    //   log_error("ERROR. Can't write to PCM device. %s\n", snd_strerror(ret));
-    // }
-
+    start = clock();
 
     // Video Frames
-
     if (frames_written == 200) {
       gettimeofday(&tval_after, NULL);
       timersub(&tval_after, &tval_before, &tval_result);
@@ -662,8 +716,10 @@ int output_v4l2_frames(EncoderSetting *encoder_setting)
 
       current_fps = 200 / elapsed_seconds;
       log_info("Current FPS: %.2f / Channel %d", current_fps, encoder_setting->channel);
-      //log_info("Obtained %d 16-bit samples from this specific audio frame", num_samples);
 
+      // if (strcmp(v4l2_device_path, "/dev/video3") == 0) {
+      //   log_info("Obtained %d 16-bit samples from this specific audio frame", num_samples);
+      // }
 
       // IMPEncoderCHNStat encoder_status;
 
@@ -737,7 +793,11 @@ int output_v4l2_frames(EncoderSetting *encoder_setting)
 
     frames_written = frames_written + 1;
 
-    usleep(1000 * 1000 * delay_in_seconds);
+    end = clock();
+    cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+
+    adjusted_delay_in_seconds = delay_in_seconds - cpu_time_used;
+    usleep(1000 * 1000 * adjusted_delay_in_seconds);
 
   }
 

@@ -61,6 +61,7 @@ int output_v4l2_frames(EncoderSetting *encoder_setting);
 int sensor_cleanup(IMPSensorInfo* sensor_info);
 void hexdump(const char * desc, const void * addr, const int len);
 void *produce_frames(void *ptr);
+void *audio_thread_entry_start(void *audio_thread_params);
 void print_stream_settings(StreamSettings *stream_settings);
 void print_channel_attributes(IMPFSChnAttr *attr);
 void print_encoder_channel_attributes(IMPEncoderCHNAttr *attr);

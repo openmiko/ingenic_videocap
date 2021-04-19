@@ -294,6 +294,18 @@ void start_frame_producer_threads(CameraConfig *camera_config)
   pthread_t thread_ids[MAX_ENCODERS];
   EncoderThreadParams encoder_thread_params[MAX_ENCODERS];
 
+  pthread_t audio_thread_id;
+
+
+
+
+
+  log_info("Starting audio thread");
+  ret = pthread_create(&audio_thread_id, NULL, audio_thread_entry_start, NULL);
+  if (ret < 0) {
+    log_error("Error creating audio thread");
+  }
+
 
   log_info("Starting frame producer threads for each encoder");
 
