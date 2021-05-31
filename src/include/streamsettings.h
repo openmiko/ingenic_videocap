@@ -111,6 +111,7 @@ typedef struct {
 
 	uint32_t flip_vertical;
 	uint32_t flip_horizontal;
+	uint32_t show_timestamp;
 
 } CameraConfig;
 

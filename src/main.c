@@ -257,9 +257,11 @@ int load_general_settings(cJSON *json, CameraConfig *camera_config)
 
   cJSON *flip_vertical = cJSON_GetObjectItemCaseSensitive(json_general_settings, "flip_vertical");
   cJSON *flip_horizontal = cJSON_GetObjectItemCaseSensitive(json_general_settings, "flip_horizontal");
+  cJSON *show_timestamp = cJSON_GetObjectItemCaseSensitive(json_general_settings, "show_timestamp");
 
   camera_config->flip_vertical = flip_vertical->valueint;
   camera_config->flip_horizontal = flip_horizontal->valueint;
+  camera_config->show_timestamp = show_timestamp->valueint;
 
   print_general_settings(camera_config);
 
@@ -295,15 +297,20 @@ void start_frame_producer_threads(CameraConfig *camera_config)
   EncoderThreadParams encoder_thread_params[MAX_ENCODERS];
 
   pthread_t audio_thread_id;
-
-
-
+  pthread_t timestamp_osd_thread_id;
 
 
   log_info("Starting audio thread");
   ret = pthread_create(&audio_thread_id, NULL, audio_thread_entry_start, NULL);
   if (ret < 0) {
     log_error("Error creating audio thread");
+  }
+
+
+  log_info("Starting timestamp OSD thread");
+  ret = pthread_create(&timestamp_osd_thread_id, NULL, timestamp_osd_entry_start, camera_config);
+  if (ret < 0) {
+    log_error("Error creating timestamp OSD thread");
   }
 
 
@@ -325,9 +332,16 @@ void start_frame_producer_threads(CameraConfig *camera_config)
   }
 
   for (i = 0; i < camera_config->num_encoders; i++) {
-    log_info("Waiting for thread %d to finish.", thread_ids[i]);
+    log_info("Waiting for encoder thread_id %d to finish.", thread_ids[i]);
     pthread_join(thread_ids[i], NULL);
   }
+
+  log_info("Waiting for audio thread %d to finish.", audio_thread_id);
+  pthread_join(audio_thread_id, NULL);
+
+  log_info("Waiting for OSD timestamp thread %d to finish.", timestamp_osd_thread_id);
+  pthread_join(timestamp_osd_thread_id, NULL);
+
 }
 
 int enable_framesources(CameraConfig *camera_config)
@@ -465,6 +479,12 @@ int main(int argc, const char *argv[])
     return -1;
   }
 
+  ret = IMP_OSD_CreateGroup(0);
+  if (ret < 0) {
+    log_error("IMP_OSD_CreateGroup(0) failed");
+    return -1;
+  }
+  
   load_configuration(json, &camera_config);
   configure_video_tuning_parameters(&camera_config);
   enable_framesources(&camera_config);

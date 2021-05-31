@@ -2,6 +2,7 @@
 #include "streamsettings.h"
 #include "log.h"
 #include <stdlib.h>
+#include <string.h>
 
 
 int pixel_format_to_int(char* name) {
@@ -142,6 +143,9 @@ int device_name_to_id(char* name) {
   if(strcmp(name, "DEV_ID_IVS") == 0) {
     device_id = DEV_ID_IVS;
   }
+  if(strcmp(name, "DEV_ID_OSD") == 0) {
+    device_id = DEV_ID_OSD;
+  }
 
   return device_id;
 }
@@ -156,6 +160,9 @@ void device_id_to_string(int device_id, char *dest, int buffer_size)
   }
   else if (device_id == DEV_ID_IVS) {
     snprintf(dest, buffer_size, "DEV_ID_IVS");
+  }
+  else if (device_id == DEV_ID_OSD) {
+    snprintf(dest, buffer_size, "DEV_ID_OSD");
   }
   else {
     snprintf(dest, buffer_size, "UNKNOWN DEVICE ID");
@@ -239,15 +246,18 @@ int populate_framesource(FrameSource *framesource, cJSON* json)
   return 0;
 }
 
-
 void print_general_settings(CameraConfig *camera_config)
 {
-  char buffer[1024];
-  snprintf(buffer, sizeof(buffer), "general_settings: \n"
+  char buffer[2048];
+
+  // Be careful not to add an extra comma on the snprint
+  snprintf(buffer, sizeof(buffer), "general_settings: \n\n"
                    "flip_vertical: %d\n"
-                   "flip_horizontal: %d\n",
+                   "flip_horizontal: %d\n"
+                   "show_timestamp: %d\n",
                     camera_config->flip_vertical,
-                    camera_config->flip_horizontal
+                    camera_config->flip_horizontal,
+                    camera_config->show_timestamp
                     );
   log_info("%s", buffer);  
 }

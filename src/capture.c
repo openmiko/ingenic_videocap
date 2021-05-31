@@ -1,4 +1,5 @@
 #include "capture.h"
+#include "bgramapinfo.h"
 
 /*
 
@@ -12,6 +13,7 @@ extern snd_pcm_t *pcm_handle;
 extern pthread_mutex_t frame_generator_mutex; 
 
 int FrameSourceEnabled[5] = {0,0,0,0,0};
+IMPRgnHandle osdRegion;
 
 int initialize_sensor(IMPSensorInfo *sensor_info)
 {
@@ -108,6 +110,8 @@ int initialize_sensor(IMPSensorInfo *sensor_info)
 
 	return 0;
 }
+
+
 
 int configure_video_tuning_parameters(CameraConfig *camera_config)
 {
@@ -518,6 +522,158 @@ void print_stream_settings(StreamSettings *stream_settings)
   log_info("%s", buffer);
 }
 
+
+
+int initialize_osd()
+{
+  int ret = 0;
+  int osdGroupNumber = 0;
+  IMPOSDGrpRgnAttr grAttrFont;
+  
+
+  log_info("Initializing on screen display");
+
+  osdRegion = IMP_OSD_CreateRgn(NULL);
+  if (osdRegion < 0 ) {
+    log_error("IMP_OSD_CreateRgn failed");
+    return -1;
+  }
+
+  ret = IMP_OSD_RegisterRgn(osdRegion, 0, NULL);
+  if (ret < 0) {
+    log_error("IMP_OSD_RegisterRgn failed");
+    return -1;
+  }
+
+  IMPOSDRgnAttr rAttrFont;
+  memset(&rAttrFont, 0, sizeof(IMPOSDRgnAttr));
+  rAttrFont.type = OSD_REG_PIC;
+  rAttrFont.rect.p0.x = 10;
+  rAttrFont.rect.p0.y = 10;
+  rAttrFont.rect.p1.x = rAttrFont.rect.p0.x + 20 * OSD_REGION_WIDTH - 1;   //p0 is start，and p1 well be epual p0+width(or heigth)-1
+  rAttrFont.rect.p1.y = rAttrFont.rect.p0.y + OSD_REGION_HEIGHT - 1;
+  rAttrFont.fmt = PIX_FMT_BGRA;
+  rAttrFont.data.picData.pData = NULL;
+
+  ret = IMP_OSD_SetRgnAttr(osdRegion, &rAttrFont);
+  if (ret < 0) {
+    log_error("IMP_OSD_SetRgnAttr failed");
+    return -1;
+  }
+
+
+  // if (IMP_OSD_GetGrpRgnAttr(osdRegion, osdGroupNumber, &grAttrFont) < 0) {
+  //   log_error("IMP_OSD_GetGrpRgnAttr failed");
+  //   return -1;
+  // }
+  // memset(&grAttrFont, 0, sizeof(IMPOSDGrpRgnAttr));
+  // grAttrFont.show = 0;
+
+  // // Disable Font global alpha, only use pixel alpha.
+  // grAttrFont.gAlphaEn = 1;
+  // grAttrFont.fgAlhpa = 0xff;
+  // grAttrFont.layer = 3;
+  // if (IMP_OSD_SetGrpRgnAttr(osdRegion, osdGroupNumber, &grAttrFont) < 0) {
+  //   log_error("IMP_OSD_SetGrpRgnAttr failed");
+  //   return -1;
+  // }
+
+  ret = IMP_OSD_Start(osdGroupNumber);
+  if (ret < 0) {
+    log_error("IMP_OSD_Start failed");
+    return -1;
+  }
+
+}
+
+// This is the entrypoint for the timestamp OSD thread
+void *timestamp_osd_entry_start(void *timestamp_osd_thread_params)
+{
+  int ret;
+
+  CameraConfig *camera_config = (CameraConfig *)timestamp_osd_thread_params;
+
+  /*generate time*/
+  char DateStr[40];
+  time_t currTime;
+  struct tm *currDate;
+  unsigned i = 0, j = 0;
+  void *dateData = NULL;
+  uint32_t *timeStampData;
+
+  IMPOSDRgnAttrData rAttrData;
+
+  initialize_osd();
+
+  int groupNumber = 0;
+
+  if (camera_config->show_timestamp <= 0) {
+    log_info("On screen timestamps not configured.");
+    return NULL;
+  }
+
+  ret = IMP_OSD_ShowRgn(osdRegion, groupNumber, 1);
+  if( ret < 0) {
+    log_error("IMP_OSD_ShowRgn failed");
+    return NULL;
+  }
+
+  timeStampData = malloc(20 * OSD_REGION_HEIGHT * OSD_REGION_WIDTH * 4);
+
+
+  while(!sigint_received) {
+      int penpos_t = 0;
+      int fontadv = 0;
+
+      time(&currTime);
+      currDate = localtime(&currTime);
+      memset(DateStr, 0, 40);
+      strftime(DateStr, 40, "%Y-%m-%d %I:%M:%S", currDate);
+      for (i = 0; i < 20; i++) {
+        switch(DateStr[i]) {
+          case '0' ... '9':
+            dateData = (void *)gBgramap[DateStr[i] - '0'].pdata;
+            fontadv = gBgramap[DateStr[i] - '0'].width;
+            penpos_t += gBgramap[DateStr[i] - '0'].width;
+            break;
+          case '-':
+            dateData = (void *)gBgramap[10].pdata;
+            fontadv = gBgramap[10].width;
+            penpos_t += gBgramap[10].width;
+            break;
+          case ' ':
+            dateData = (void *)gBgramap[11].pdata;
+            fontadv = gBgramap[11].width;
+            penpos_t += gBgramap[11].width;
+            break;
+          case ':':
+            dateData = (void *)gBgramap[12].pdata;
+            fontadv = gBgramap[12].width;
+            penpos_t += gBgramap[12].width;
+            break;
+          default:
+            break;
+        }
+
+        for (j = 0; j < OSD_REGION_HEIGHT; j++) {
+          memcpy((void *)((uint32_t *)timeStampData + j*20*OSD_REGION_WIDTH + penpos_t),
+              (void *)((uint32_t *)dateData + j*fontadv), fontadv*4);
+        }
+      }
+      rAttrData.picData.pData = timeStampData;
+      IMP_OSD_UpdateRgnAttrData(osdRegion, &rAttrData);
+      // log_info("Updated osdRegion to: %s", DateStr);
+
+      sleep(1);
+  }
+
+  free(timeStampData);
+
+  return NULL;
+
+}
+
+
 // This is the entrypoint for the audio thread
 void *audio_thread_entry_start(void *audio_thread_params)
 {
@@ -797,7 +953,7 @@ int output_v4l2_frames(EncoderSetting *encoder_setting)
     cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
 
     adjusted_delay_in_seconds = delay_in_seconds - cpu_time_used;
-    usleep(1000 * 1000 * adjusted_delay_in_seconds);
+    usleep(1000 * 1000 * delay_in_seconds);
 
   }
 
