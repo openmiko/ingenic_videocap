@@ -254,12 +254,14 @@ void print_general_settings(CameraConfig *camera_config)
   snprintf(buffer, sizeof(buffer), "general_settings: \n\n"
                    "flip_vertical: %d\n"
                    "flip_horizontal: %d\n"
-                   "show_timestamp: %d\n",
+                   "show_timestamp: %d\n"
+                   "enable_audio: %d\n",
                     camera_config->flip_vertical,
                     camera_config->flip_horizontal,
-                    camera_config->show_timestamp
+                    camera_config->show_timestamp,
+                    camera_config->enable_audio
                     );
-  log_info("%s", buffer);  
+  log_info("%s", buffer);
 }
 
 void print_framesource(FrameSource *framesource)

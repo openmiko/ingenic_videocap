@@ -3,7 +3,8 @@
   "general_settings": {
     "flip_vertical": 0,
     "flip_horizontal": 0,
-    "show_timestamp": 1
+    "show_timestamp": 1,
+    "enable_audio": 0
   },
   "frame_sources": [{
     "id": 0,
