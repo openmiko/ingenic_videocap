@@ -305,6 +305,7 @@ void start_frame_producer_threads(CameraConfig *camera_config)
 
   pthread_t audio_thread_id;
   pthread_t timestamp_osd_thread_id;
+  pthread_t night_vision_thread_id;
 
 
   if(camera_config->enable_audio) {
@@ -319,6 +320,12 @@ void start_frame_producer_threads(CameraConfig *camera_config)
   ret = pthread_create(&timestamp_osd_thread_id, NULL, timestamp_osd_entry_start, camera_config);
   if (ret < 0) {
     log_error("Error creating timestamp OSD thread");
+  }
+
+  log_info("Starting night vision thread");
+  ret = pthread_create(&night_vision_thread_id, NULL, night_vision_entry_start, camera_config);
+  if (ret < 0) {
+    log_error("Error creating night vision thread");
   }
 
 
