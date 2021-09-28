@@ -628,7 +628,7 @@ void *timestamp_osd_entry_start(void *timestamp_osd_thread_params)
       time(&currTime);
       currDate = localtime(&currTime);
       memset(DateStr, 0, 40);
-      strftime(DateStr, 40, "%Y-%m-%d %I:%M:%S", currDate);
+      strftime(DateStr, 40, "%Y-%m-%d %H:%M:%S", currDate);
       for (i = 0; i < 20; i++) {
         switch(DateStr[i]) {
           case '0' ... '9':
