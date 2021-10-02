@@ -524,7 +524,7 @@ void print_stream_settings(StreamSettings *stream_settings)
 
 
 
-int initialize_osd()
+int initialize_osd(int osdLoc)
 {
   int ret = 0;
   int osdGroupNumber = 0;
@@ -548,10 +548,32 @@ int initialize_osd()
   IMPOSDRgnAttr rAttrFont;
   memset(&rAttrFont, 0, sizeof(IMPOSDRgnAttr));
   rAttrFont.type = OSD_REG_PIC;
-  rAttrFont.rect.p0.x = 10;
-  rAttrFont.rect.p0.y = 10;
-  rAttrFont.rect.p1.x = rAttrFont.rect.p0.x + 20 * OSD_REGION_WIDTH - 1;   //p0 is start，and p1 well be epual p0+width(or heigth)-1
-  rAttrFont.rect.p1.y = rAttrFont.rect.p0.y + OSD_REGION_HEIGHT - 1;
+  switch(osdLoc) {
+    case '1': //top right
+      rAttrFont.rect.p1.x = SENSOR_WIDTH - 10;
+      rAttrFont.rect.p0.x = rAttrFont.rect.p1.x - 20 * OSD_REGION_WIDTH + 1;
+      rAttrFont.rect.p0.y = 10;
+      rAttrFont.rect.p1.y = rAttrFont.rect.p0.y + OSD_REGION_HEIGHT - 1;
+      break;
+    case '2': //bottom left
+      rAttrFont.rect.p0.x = 10;
+      rAttrFont.rect.p1.x = rAttrFont.rect.p0.x + 20 * OSD_REGION_WIDTH - 1;
+      rAttrFont.rect.p1.y = SENSOR_HEIGHT - 10;
+      rAttrFont.rect.p0.y = rAttrFont.rect.p1.y - OSD_REGION_HEIGHT + 1;
+      break;
+    case '3': //bottom right
+      rAttrFont.rect.p1.x = SENSOR_WIDTH - 10;
+      rAttrFont.rect.p0.x = rAttrFont.rect.p1.x - 20 * OSD_REGION_WIDTH + 1;
+      rAttrFont.rect.p1.y = SENSOR_HEIGHT - 10;
+      rAttrFont.rect.p0.y = rAttrFont.rect.p1.y - OSD_REGION_HEIGHT + 1;
+      break;
+    default: //top left
+      rAttrFont.rect.p0.x = 10;
+      rAttrFont.rect.p0.y = 10;
+      rAttrFont.rect.p1.x = rAttrFont.rect.p0.x + 20 * OSD_REGION_WIDTH - 1;   //p0 is start，and p1 well be epual p0+width(or heigth)-1
+      rAttrFont.rect.p1.y = rAttrFont.rect.p0.y + OSD_REGION_HEIGHT - 1;
+      break;
+  }
   rAttrFont.fmt = PIX_FMT_BGRA;
   rAttrFont.data.picData.pData = NULL;
 
@@ -603,13 +625,20 @@ void *timestamp_osd_entry_start(void *timestamp_osd_thread_params)
 
   IMPOSDRgnAttrData rAttrData;
 
-  initialize_osd();
+  initialize_osd(camera_config->timestamp_location);
 
   int groupNumber = 0;
 
   if (camera_config->show_timestamp <= 0) {
     log_info("On screen timestamps not configured.");
     return NULL;
+  }
+
+  if (camera_config->timestamp_24h <= 0) {
+    const char DateFormat = "%Y-%m-%d %H:%M:%S";
+  }
+  else {
+    const char DateFormat = "%Y-%m-%d %I:%M:%S %p";
   }
 
   ret = IMP_OSD_ShowRgn(osdRegion, groupNumber, 1);
@@ -628,7 +657,8 @@ void *timestamp_osd_entry_start(void *timestamp_osd_thread_params)
       time(&currTime);
       currDate = localtime(&currTime);
       memset(DateStr, 0, 40);
-      strftime(DateStr, 40, "%Y-%m-%d %H:%M:%S", currDate);
+      // strftime(DateStr, 40, "%Y-%m-%d %H:%M:%S", currDate);
+      strftime(DateStr, 40, *DateFormat, currDate);
       for (i = 0; i < 20; i++) {
         switch(DateStr[i]) {
           case '0' ... '9':

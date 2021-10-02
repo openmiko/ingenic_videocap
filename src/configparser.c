@@ -255,10 +255,14 @@ void print_general_settings(CameraConfig *camera_config)
                    "flip_vertical: %d\n"
                    "flip_horizontal: %d\n"
                    "show_timestamp: %d\n"
+                   "timestamp_24h: %d\n"
+                   "timestamp_location: %d\n"
                    "enable_audio: %d\n",
                     camera_config->flip_vertical,
                     camera_config->flip_horizontal,
                     camera_config->show_timestamp,
+                    camera_config->timestamp_24h,
+                    camera_config->timestamp_location,
                     camera_config->enable_audio
                     );
   log_info("%s", buffer);
