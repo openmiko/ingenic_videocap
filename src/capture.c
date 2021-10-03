@@ -617,6 +617,7 @@ void *timestamp_osd_entry_start(void *timestamp_osd_thread_params)
 
   /*generate time*/
   char DateStr[40];
+  char DateFormat[40];
   time_t currTime;
   struct tm *currDate;
   unsigned i = 0, j = 0;
@@ -635,10 +636,10 @@ void *timestamp_osd_entry_start(void *timestamp_osd_thread_params)
   }
 
   if (camera_config->timestamp_24h <= 0) {
-    const char DateFormat = "%Y-%m-%d %I:%M:%S %p";
+    DateFormat = "%Y-%m-%d %I:%M:%S %p";
   }
   else {
-    const char DateFormat = "%Y-%m-%d %H:%M:%S";
+    DateFormat = "%Y-%m-%d %H:%M:%S";
   }
 
   ret = IMP_OSD_ShowRgn(osdRegion, groupNumber, 1);
@@ -658,7 +659,7 @@ void *timestamp_osd_entry_start(void *timestamp_osd_thread_params)
       currDate = localtime(&currTime);
       memset(DateStr, 0, 40);
       // strftime(DateStr, 40, "%Y-%m-%d %H:%M:%S", currDate);
-      strftime(DateStr, 40, *DateFormat, currDate);
+      strftime(DateStr, 40, DateFormat, currDate);
       for (i = 0; i < 20; i++) {
         switch(DateStr[i]) {
           case '0' ... '9':
