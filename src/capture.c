@@ -635,10 +635,10 @@ void *timestamp_osd_entry_start(void *timestamp_osd_thread_params)
   }
 
   if (camera_config->timestamp_24h <= 0) {
-    const char DateFormat = "%Y-%m-%d %H:%M:%S";
+    const char DateFormat = "%Y-%m-%d %I:%M:%S %p";
   }
   else {
-    const char DateFormat = "%Y-%m-%d %I:%M:%S %p";
+    const char DateFormat = "%Y-%m-%d %H:%M:%S";
   }
 
   ret = IMP_OSD_ShowRgn(osdRegion, groupNumber, 1);
