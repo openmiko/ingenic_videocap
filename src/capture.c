@@ -616,7 +616,9 @@ void *timestamp_osd_entry_start(void *timestamp_osd_thread_params)
   CameraConfig *camera_config = (CameraConfig *)timestamp_osd_thread_params;
 
   /*generate time*/
-&
+  char DateStr[40];
+  time_t currTime;
+  struct tm *currDate;
   unsigned i = 0, j = 0;
   void *dateData = NULL;
   uint32_t *timeStampData;
