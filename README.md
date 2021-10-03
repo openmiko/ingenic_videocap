@@ -11,31 +11,31 @@ One group only supports one resolution, and different resolutions need to be in 
 However a single group can support both H264 and JPEG capture formats.
 
 
-Config options in settings.json
+**Config options in settings.json**
 
-flip_vertical:
+_flip_vertical:_
 - 0 no flip
 - 1 vertical flip
 
-flip_horizontal:
+_flip_horizontal:_
 - 0 no flip
 - 1 horizontal flip
 
-timestamp_24h:
+_timestamp_24h:_
 - 0 12h display
 - 1 24h display
 
-timestamp_location:
+_timestamp_location:_
 - 0 top left corner
 - 1 top roght corner
 - 2 bottom left corner
 - 3 bottom right corner
 
-show_timestamp:
+_show_timestamp:_
 - 0 disable timestampt
 - 1 enable timestamp
 
-enable_audio:
+_enable_audio:_
 - 0 disable audio
 - 1 enable audio
 
