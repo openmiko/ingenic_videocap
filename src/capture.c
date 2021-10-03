@@ -549,19 +549,19 @@ int initialize_osd(int osdLoc)
   memset(&rAttrFont, 0, sizeof(IMPOSDRgnAttr));
   rAttrFont.type = OSD_REG_PIC;
   switch(osdLoc) {
-    case '1': //top right
+    case 1: //top right
       rAttrFont.rect.p1.x = SENSOR_WIDTH - 10;
       rAttrFont.rect.p0.x = rAttrFont.rect.p1.x - 20 * OSD_REGION_WIDTH + 1;
       rAttrFont.rect.p0.y = 10;
       rAttrFont.rect.p1.y = rAttrFont.rect.p0.y + OSD_REGION_HEIGHT - 1;
       break;
-    case '2': //bottom left
+    case 2: //bottom left
       rAttrFont.rect.p0.x = 10;
       rAttrFont.rect.p1.x = rAttrFont.rect.p0.x + 20 * OSD_REGION_WIDTH - 1;
       rAttrFont.rect.p1.y = SENSOR_HEIGHT - 10;
       rAttrFont.rect.p0.y = rAttrFont.rect.p1.y - OSD_REGION_HEIGHT + 1;
       break;
-    case '3': //bottom right
+    case 3: //bottom right
       rAttrFont.rect.p1.x = SENSOR_WIDTH - 10;
       rAttrFont.rect.p0.x = rAttrFont.rect.p1.x - 20 * OSD_REGION_WIDTH + 1;
       rAttrFont.rect.p1.y = SENSOR_HEIGHT - 10;
