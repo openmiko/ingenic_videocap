@@ -616,10 +616,7 @@ void *timestamp_osd_entry_start(void *timestamp_osd_thread_params)
   CameraConfig *camera_config = (CameraConfig *)timestamp_osd_thread_params;
 
   /*generate time*/
-  char DateStr[40];
-  char DateFormat[40];
-  time_t currTime;
-  struct tm *currDate;
+&
   unsigned i = 0, j = 0;
   void *dateData = NULL;
   uint32_t *timeStampData;
@@ -634,12 +631,10 @@ void *timestamp_osd_entry_start(void *timestamp_osd_thread_params)
     log_info("On screen timestamps not configured.");
     return NULL;
   }
-
+  
+  char* DateFormat = "%Y-%m-%d %H:%M:%S";
   if (camera_config->timestamp_24h <= 0) {
     DateFormat = "%Y-%m-%d %I:%M:%S %p";
-  }
-  else {
-    DateFormat = "%Y-%m-%d %H:%M:%S";
   }
 
   ret = IMP_OSD_ShowRgn(osdRegion, groupNumber, 1);
