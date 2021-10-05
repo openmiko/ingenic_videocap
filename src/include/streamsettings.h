@@ -112,6 +112,8 @@ typedef struct {
 	uint32_t flip_vertical;
 	uint32_t flip_horizontal;
 	uint32_t show_timestamp;
+	uint32_t timestamp_24h;
+	uint32_t timestamp_location;
 	uint32_t enable_audio;
 
 

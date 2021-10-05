@@ -258,11 +258,23 @@ int load_general_settings(cJSON *json, CameraConfig *camera_config)
   cJSON *flip_vertical = cJSON_GetObjectItemCaseSensitive(json_general_settings, "flip_vertical");
   cJSON *flip_horizontal = cJSON_GetObjectItemCaseSensitive(json_general_settings, "flip_horizontal");
   cJSON *show_timestamp = cJSON_GetObjectItemCaseSensitive(json_general_settings, "show_timestamp");
+  cJSON *timestamp_24h = cJSON_GetObjectItemCaseSensitive(json_general_settings, "timestamp_24h");
+  cJSON *timestamp_location = cJSON_GetObjectItemCaseSensitive(json_general_settings, "timestamp_location");
   cJSON *enable_audio = cJSON_GetObjectItemCaseSensitive(json_general_settings, "enable_audio");
 
   camera_config->flip_vertical = flip_vertical->valueint;
   camera_config->flip_horizontal = flip_horizontal->valueint;
   camera_config->show_timestamp = show_timestamp->valueint;
+
+  camera_config->timestamp_24h = 0;
+  if (timestamp_24h) {
+    camera_config->timestamp_24h = timestamp_24h->valueint;
+  }
+
+  camera_config->timestamp_location = 0;
+  if (timestamp_location) {
+    camera_config->timestamp_location = timestamp_location->valueint;
+  }
 
   camera_config->enable_audio = 0;
   if (enable_audio) {
