@@ -53,6 +53,9 @@
 
 #define SENSOR_NAME_MAX_LENGTH	50
 
+#define NIGHT_VISION_FILE_BUFFER_SIZE  8
+#define NIGHT_VISION_FILE    "/tmp/night_vision_enabled"
+
 
 int initialize_sensor(IMPSensorInfo *sensor_info);
 int initialize_audio();
@@ -65,6 +68,7 @@ void hexdump(const char * desc, const void * addr, const int len);
 void *produce_frames(void *ptr);
 void *audio_thread_entry_start(void *audio_thread_params);
 void *timestamp_osd_entry_start(void *timestamp_osd_thread_params);
+void *night_vision_entry_start(void *night_vision_thread_params);
 void print_stream_settings(StreamSettings *stream_settings);
 void print_channel_attributes(IMPFSChnAttr *attr);
 void print_encoder_channel_attributes(IMPEncoderCHNAttr *attr);

@@ -752,6 +752,61 @@ void *audio_thread_entry_start(void *audio_thread_params)
   }
 }
 
+// This is the entrypoint for the night vision thread
+void *night_vision_entry_start(void *night_vision_thread_params)
+{
+  // Default to day mode
+  IMPISPRunningMode ispRunningMode = IMPISP_RUNNING_MODE_DAY;
+  IMPISPSceneMode ispSceneMode = IMPISP_SCENE_MODE_AUTO;
+  IMPISPColorfxMode ispColorMode = IMPISP_COLORFX_MODE_AUTO;
+
+  bool NIGHT_VISION_ENABLED = 0;
+  bool NIGHT_VISION_PREVIOUS_STATE = 0;
+
+  while(!sigint_received) {
+    int ret;
+    // Save previous state
+    NIGHT_VISION_PREVIOUS_STATE = NIGHT_VISION_ENABLED;
+    // Read State file if it exists. Otherwise don't do anything.
+    if( access( NIGHT_VISION_FILE, F_OK ) == 0 ) {
+      char buffer[NIGHT_VISION_FILE_BUFFER_SIZE];
+      FILE *file = fopen(NIGHT_VISION_FILE, "r");
+      fscanf(file, "%d", &NIGHT_VISION_ENABLED);
+      fclose(file);
+    }
+    // Check if state has changed
+    if (NIGHT_VISION_PREVIOUS_STATE != NIGHT_VISION_ENABLED) {
+      if (NIGHT_VISION_ENABLED) {
+        ispRunningMode = IMPISP_RUNNING_MODE_NIGHT;
+        ispSceneMode = IMPISP_SCENE_MODE_NIGHT;
+        ispColorMode = IMPISP_COLORFX_MODE_BW;
+        log_info("Night Vision ENABLED (Value: (%d))\n", NIGHT_VISION_ENABLED);
+        
+      } else {
+        ispRunningMode = IMPISP_RUNNING_MODE_DAY;
+        ispSceneMode = IMPISP_SCENE_MODE_AUTO;
+        ispColorMode = IMPISP_COLORFX_MODE_AUTO;
+        log_info("Night Vision DISABLED (Value: (%d))\n", NIGHT_VISION_ENABLED);
+      }
+      ret = IMP_ISP_Tuning_SetISPRunningMode(ispRunningMode);
+      if (ret) {
+        log_error("ERROR on SetISPRunningMode!");
+      }
+
+      ret = IMP_ISP_Tuning_SetSceneMode(ispSceneMode);
+      if (ret) {
+        log_error("ERROR on SetSceneMode!");
+      }
+
+      ret = IMP_ISP_Tuning_SetColorfxMode(ispColorMode);
+      if (ret) {
+        log_error("ERROR on SetColorfxMode!");
+      }
+    }
+
+    sleep(1);
+  }
+}
 
 
 // This is the entrypoint for the threads
