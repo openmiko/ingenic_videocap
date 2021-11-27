@@ -864,11 +864,6 @@ int output_v4l2_frames(EncoderSetting *encoder_setting)
   delay_in_seconds = (1.0 * encoder_setting->frame_rate_denominator) / encoder_setting->frame_rate_numerator;
   log_info("Delay in seconds: %f", delay_in_seconds);
 
-
-
-
-
-
   log_info("Opening V4L2 device: %s ", v4l2_device_path);
   int v4l2_fd = open(v4l2_device_path, O_WRONLY, 0777);
 
@@ -990,43 +985,18 @@ int output_v4l2_frames(EncoderSetting *encoder_setting)
 
     stream_packets = stream.packCount;
 
+
+    // Sum up the size of all the packs so we know the total size
+    // of the frames we are sending
     total = 0;
-    stream_chunk = malloc(1);
-    if (stream_chunk == NULL) {
-      log_error("Malloc returned NULL.");
-      return -1;
-    }
-
     for (i = 0; i < stream_packets; i++) {
-      log_debug("Processing packet %d of size %d.", total, i, stream.pack[i].length);
-
-      temp_chunk = realloc(stream_chunk, total + stream.pack[i].length);
-
-      if (temp_chunk == NULL) {
-        log_error("realloc returned NULL for request of size: %d", total);
-        return -1;
-      }
-
-      log_debug("Allocated an additional %d bytes for packet %d.", total + stream.pack[i].length, i);
-
-      // Allocating worked
-      stream_chunk = temp_chunk;
-      temp_chunk = NULL;
-
-      memcpy(&stream_chunk[total], (void *)stream.pack[i].virAddr, stream.pack[i].length);
       total = total + stream.pack[i].length;
-
-      log_debug("Total size of chunk after concatenating: %d bytes.", total);
     }
 
     // Write out to the V4L2 device (for example /dev/video0)
-    ret = write(v4l2_fd, (void *)stream_chunk, total);
-    if (ret != total) {
-      log_error("Stream write error: %s", ret);
-      return -1;
-    }
-  
-    free(stream_chunk);
+    // The stream packs are contiguous so we can just use the first
+    // pack's address
+    ret = write(v4l2_fd, (void *)stream.pack[0].virAddr, total);
 
     IMP_Encoder_ReleaseStream(encoder_setting->channel, &stream);
 
