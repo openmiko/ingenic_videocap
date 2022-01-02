@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <imp_framesource.h>
 #include <imp_encoder.h>
+#include <imp_isp.h>
 
 #define MAX_FRAMESOURCES		4
 #define MAX_ENCODERS			10
@@ -120,5 +121,9 @@ typedef struct {
 } CameraConfig;
 
 
+typedef struct {
+	IMPISPAeStrategy ae_strategy;
+
+} CameraProfile;
 
 #endif /* STREAMSETTINGS_H */
