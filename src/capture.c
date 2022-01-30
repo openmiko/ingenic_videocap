@@ -1,3 +1,4 @@
+#include "models.h"
 #include "capture.h"
 #include "bgramapinfo.h"
 
@@ -12,8 +13,12 @@ extern sig_atomic_t sigint_received;
 extern snd_pcm_t *pcm_handle;
 extern pthread_mutex_t frame_generator_mutex; 
 
+// Globals
 int FrameSourceEnabled[5] = {0,0,0,0,0};
 IMPRgnHandle osdRegion;
+
+// The general sqlite configuration database
+sqlite3 *db;
 
 int initialize_sensor(IMPSensorInfo *sensor_info)
 {
@@ -751,6 +756,96 @@ void *audio_thread_entry_start(void *audio_thread_params)
 
   }
 }
+
+
+
+
+int sql_camera_profile_callback(void *shared_data, int count, char **data, char **columns)
+{
+  int ret, rc;
+  char sql[200];
+  char *err_msg;
+  int id;
+  CameraProfile *camera_profile = (CameraProfile *)shared_data;
+
+  AeStrategy ae_strategy;
+  SceneMode scene_mode;
+  ColorFxMode color_fx_mode;
+
+  for (int i = 0; i < count; i++) {
+
+    if (strcmp(columns[i], "ae_strategy_id") == 0) {
+      if(data[i]) {
+        id = strtol(data[i], NULL, 10);
+        // get_ae_strategy(id, &ae_strategy);
+        get_setting(id, "aestrategy", (Setting *)&ae_strategy);
+        log_info("AEStrategy id: %d, name: %s, description: %s, enum_value: %d", ae_strategy.id, ae_strategy.name, ae_strategy.description, ae_strategy.enum_value);
+        IMP_ISP_Tuning_SetAeStrategy(ae_strategy.enum_value);
+      }
+    }
+
+    if (strcmp(columns[i], "scene_mode_id") == 0) {
+      if(data[i]) {
+        id = strtol(data[i], NULL, 10);
+        get_setting(id, "scenemode", (Setting *)&scene_mode);
+        log_info("SceneMode id: %d, name: %s, description: %s, enum_value: %d", scene_mode.id, scene_mode.name, scene_mode.description, scene_mode.enum_value);
+        IMP_ISP_Tuning_SetSceneMode(scene_mode.enum_value);
+      }
+    }
+
+    if (strcmp(columns[i], "color_fx_mode_id") == 0) {
+      if(data[i]) {
+        id = strtol(data[i], NULL, 10);
+        get_setting(id, "colorfxmode", (Setting *)&color_fx_mode);
+        log_info("ColorFxMode id: %d, name: %s, description: %s, enum_value: %d", color_fx_mode.id, color_fx_mode.name, color_fx_mode.description, color_fx_mode.enum_value);
+        IMP_ISP_Tuning_SetColorfxMode(color_fx_mode.enum_value);
+      }
+    }
+
+
+  }
+    
+  return 0;
+}
+
+// This is the entrypoint for the real time configuration thread
+void *real_time_configuration_start(void *params)
+{
+  sqlite3_stmt *stmt;
+  char *err_msg = 0;
+
+  CameraProfile camera_profile;
+
+  int rc = sqlite3_open("/config/openmiko.db", &db);
+
+  if (rc != SQLITE_OK) {    
+    log_error("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return NULL;
+  }
+
+  while(1) {
+    char* sql =
+      "SELECT ae_strategy_id, anti_flicker_attr_id, anti_fog_attr_id, color_fx_mode_id, "
+      "drc_mode_id, mesh_shading_scale_id, running_mode_id, scene_mode_id, temper_mode_id, tuning_mode_id, "
+      "tuning_ops_mode_id, core_awb_stats_mode_id, core_exposure_mode_id, core_exposure_unit_id, "
+      "core_white_balance_mode_id from openmiko_cameraprofile limit 1";
+
+    log_info("[ExecSQL] %s", sql);
+    rc = sqlite3_exec(db, sql, sql_camera_profile_callback, &camera_profile, &err_msg);
+
+    if (rc != SQLITE_OK) {      
+      log_error("Failed to fetch data: %s\n", sqlite3_errmsg(db));
+      sqlite3_close(db);
+      return NULL;
+    }    
+
+    sleep(5);
+  }
+
+  sqlite3_close(db);
+}
+
 
 // This is the entrypoint for the night vision thread
 void *night_vision_entry_start(void *night_vision_thread_params)

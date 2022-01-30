@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <time.h>
+#include <sqlite3.h>
 
 #include <imp_audio.h>
 #include <imp_log.h>
@@ -69,8 +70,10 @@ void *produce_frames(void *ptr);
 void *audio_thread_entry_start(void *audio_thread_params);
 void *timestamp_osd_entry_start(void *timestamp_osd_thread_params);
 void *night_vision_entry_start(void *night_vision_thread_params);
+void *real_time_configuration_start(void *params);
 void print_stream_settings(StreamSettings *stream_settings);
 void print_channel_attributes(IMPFSChnAttr *attr);
 void print_encoder_channel_attributes(IMPEncoderCHNAttr *attr);
+int sql_camera_profile_callback(void *, int, char **, char **);
 
 #endif /* CAPTURE_H */
