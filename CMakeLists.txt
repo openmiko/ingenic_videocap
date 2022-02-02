@@ -1,27 +1,19 @@
 cmake_minimum_required(VERSION 3.4.3)
 
+set(CMAKE_VERBOSE_MAKEFILE ON)
+
 # Set the project name
 project(IngenicVideoCapture)
 
 add_subdirectory(src/facil.io)
-#add_subdirectory(src/l8w8jwt)
 
 set_property(TARGET facil.io PROPERTY C_STANDARD 99)
-#set_property(TARGET l8w8jwt PROPERTY C_STANDARD 99)
-
 
 get_cmake_property(_variableNames VARIABLES)
 list (SORT _variableNames)
 foreach (_variableName ${_variableNames})
     message(STATUS "${_variableName}=${${_variableName}}")
 endforeach()
-
-# set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -muclibc")
-
-# Strip out symbols to make things a bit leaner
-# set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -s")
-# set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -s")
-
 
 # Tell CMake where to look for header files
 include_directories(${CMAKE_SOURCE_DIR}/src/include)
@@ -31,8 +23,7 @@ include_directories(${CMAKE_SOURCE_DIR}/src/include/sysutils)
 include_directories(${CMAKE_SOURCE_DIR}/src/libbcrypt)
 include_directories(${CMAKE_SOURCE_DIR}/src/libbcrypt/crypt_blowfish)
 include_directories(${CMAKE_FIND_ROOT_PATH}/usr/include/h264bitstream)
-include_directories(${CMAKE_FIND_ROOT_PATH}/usr/include)
-
+include_directories(${CMAKE_SOURCE_DIR}/../../target/usr/include)
 
 # The videocapture source files are all the *.c files minus the autonight and getimage
 file(GLOB VIDEOCAPTURE_SRC_FILES "src/*.c")
