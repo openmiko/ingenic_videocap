@@ -31,6 +31,7 @@ include_directories(${CMAKE_SOURCE_DIR}/src/include/sysutils)
 include_directories(${CMAKE_SOURCE_DIR}/src/libbcrypt)
 include_directories(${CMAKE_SOURCE_DIR}/src/libbcrypt/crypt_blowfish)
 include_directories(${CMAKE_FIND_ROOT_PATH}/usr/include/h264bitstream)
+include_directories(${CMAKE_FIND_ROOT_PATH}/usr/include)
 
 
 # The videocapture source files are all the *.c files minus the autonight and getimage
