@@ -48,5 +48,6 @@ int log_add_fp(FILE *fp, int level);
 void log_log(int level, const char *file, int line, const char *fmt, ...);
 int logc_to_syslog_level(int syslog_level);
 void log_init_syslog();
+void log_remove_callback_id(int id);
 
 #endif

@@ -57,6 +57,8 @@
 #define NIGHT_VISION_FILE_BUFFER_SIZE  8
 #define NIGHT_VISION_FILE    "/tmp/night_vision_enabled"
 
+#define LOG_ROTATE_SIGNAL	SIGUSR1
+#define DEFAULT_LOGFILE 	"/var/log/videocapture.log"
 
 int initialize_sensor(IMPSensorInfo *sensor_info);
 int initialize_audio();

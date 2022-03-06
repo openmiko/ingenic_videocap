@@ -157,12 +157,15 @@ int log_add_callback(log_LogFn fn, void *udata, int level) {
   for (int i = 0; i < MAX_CALLBACKS; i++) {
     if (!L.callbacks[i].fn) {
       L.callbacks[i] = (Callback) { fn, udata, level };
-      return 0;
+      return i;
     }
   }
   return -1;
 }
 
+void log_remove_callback_id(int id) {
+  L.callbacks[id] = (Callback) { NULL, NULL, 0};
+}
 
 int log_add_fp(FILE *fp, int level) {
   return log_add_callback(file_callback, fp, level);
@@ -188,12 +191,13 @@ void log_log(int level, const char *file, int line, const char *fmt, ...) {
 
   lock();
 
-  if (!L.quiet && level >= L.level) {
-    init_event(&ev, stderr);
-    va_start(ev.ap, fmt);
-    stdout_callback(&ev);
-    va_end(ev.ap);
-  }
+  // Disable stdout callback
+  // if (!L.quiet && level >= L.level) {
+  //   init_event(&ev, stderr);
+  //   va_start(ev.ap, fmt);
+  //   stdout_callback(&ev);
+  //   va_end(ev.ap);
+  // }
 
   for (int i = 0; i < MAX_CALLBACKS && L.callbacks[i].fn; i++) {
     Callback *cb = &L.callbacks[i];

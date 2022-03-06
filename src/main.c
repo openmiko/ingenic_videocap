@@ -5,7 +5,9 @@
 volatile sig_atomic_t sigint_received = 0; 
 
 pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t frame_generator_mutex; 
+pthread_mutex_t frame_generator_mutex;
+FILE* logfile_fp;
+int primary_log_callback_id;
 
 snd_pcm_t *pcm_handle;
 
@@ -13,15 +15,34 @@ snd_pcm_t *pcm_handle;
 /* Signal Handler for SIGINT */
 void sigint_handler(int sig_num) 
 { 
-  /* Reset handler to catch SIGINT next time. 
-     Refer http://en.cppreference.com/w/c/program/signal */
+  // Reset handler to catch SIGINT next time. 
   signal(SIGINT, sigint_handler);
 
   sigint_received = 1;
-  printf("\nSIGINT received. Shutting down.\n"); 
   fflush(stdout); 
 }
 
+/* Signal Handler for SIGUSR1 / LOG_ROTATE_SIGNAL  */
+void logging_signal_handler(int sig_num) 
+{ 
+  // Reset handler to catch LOG_ROTATE_SIGNAL next time. 
+  signal(LOG_ROTATE_SIGNAL, logging_signal_handler);
+  fflush(stdout);
+
+  pthread_mutex_lock(&log_mutex);
+  if (logfile_fp) {
+
+    log_remove_callback_id(primary_log_callback_id);    
+    fflush(logfile_fp);
+    fclose(logfile_fp);
+    logfile_fp = NULL;
+  }
+
+  logfile_fp = fopen(DEFAULT_LOGFILE, "a");
+  primary_log_callback_id = log_add_fp(logfile_fp, LOGC_INFO);
+
+  pthread_mutex_unlock(&log_mutex);
+}
 
 void setup_framesource(FrameSource *framesource)
 {
@@ -445,12 +466,14 @@ int main(int argc, const char *argv[])
   }
 
   signal(SIGINT, sigint_handler);
+  signal(LOG_ROTATE_SIGNAL, logging_signal_handler);
 
 
   // Configure logging
   log_set_level(LOGC_INFO);
   log_set_lock(lock_callback, &log_mutex);
-  log_init_syslog();
+  logfile_fp = fopen(DEFAULT_LOGFILE, "w+");
+  primary_log_callback_id = log_add_fp(logfile_fp, LOGC_INFO);
   
 
   // Reading the JSON file into memory  
