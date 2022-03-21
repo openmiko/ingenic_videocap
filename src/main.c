@@ -356,11 +356,11 @@ void start_frame_producer_threads(CameraConfig *camera_config)
     log_error("Error creating timestamp OSD thread");
   }
 
-  // log_info("Starting night vision thread");
-  // ret = pthread_create(&night_vision_thread_id, NULL, night_vision_entry_start, camera_config);
-  // if (ret < 0) {
-  //   log_error("Error creating night vision thread");
-  // }
+  log_info("Starting night vision thread");
+  ret = pthread_create(&night_vision_thread_id, NULL, night_vision_entry_start, camera_config);
+  if (ret < 0) {
+    log_error("Error creating night vision thread");
+  }
 
   log_info("Starting real time configuration thread");
   ret = pthread_create(&real_time_configuration_thread_id, NULL, real_time_configuration_start, camera_config);
