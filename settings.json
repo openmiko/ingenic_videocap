@@ -6,7 +6,8 @@
     "timestamp_24h": 0,
     "timestamp_location": 1,
     "show_timestamp": 1,
-    "enable_audio": 0
+    "enable_audio": 0,
+    "enable_logging": 0
   },
   "frame_sources": [{
     "id": 0,

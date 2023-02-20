@@ -282,6 +282,7 @@ int load_general_settings(cJSON *json, CameraConfig *camera_config)
   cJSON *timestamp_24h = cJSON_GetObjectItemCaseSensitive(json_general_settings, "timestamp_24h");
   cJSON *timestamp_location = cJSON_GetObjectItemCaseSensitive(json_general_settings, "timestamp_location");
   cJSON *enable_audio = cJSON_GetObjectItemCaseSensitive(json_general_settings, "enable_audio");
+  cJSON *enable_logging = cJSON_GetObjectItemCaseSensitive(json_general_settings, "enable_logging");
 
   camera_config->flip_vertical = flip_vertical->valueint;
   camera_config->flip_horizontal = flip_horizontal->valueint;
@@ -307,7 +308,7 @@ int load_general_settings(cJSON *json, CameraConfig *camera_config)
 
   return 0;
 }
-  
+
 
 void load_configuration(cJSON *json, CameraConfig *camera_config)
 {
@@ -466,14 +467,16 @@ int main(int argc, const char *argv[])
   }
 
   signal(SIGINT, sigint_handler);
-  signal(LOG_ROTATE_SIGNAL, logging_signal_handler);
-
 
   // Configure logging
-  log_set_level(LOGC_INFO);
-  log_set_lock(lock_callback, &log_mutex);
-  logfile_fp = fopen(DEFAULT_LOGFILE, "w+");
-  primary_log_callback_id = log_add_fp(logfile_fp, LOGC_INFO);
+  if(camera_config.enable_logging) {
+    signal(LOG_ROTATE_SIGNAL, logging_signal_handler);
+
+    log_set_level(LOGC_INFO);
+    log_set_lock(lock_callback, &log_mutex);
+    logfile_fp = fopen(DEFAULT_LOGFILE, "w+");
+    primary_log_callback_id = log_add_fp(logfile_fp, LOGC_INFO);
+  }
   
 
   // Reading the JSON file into memory  

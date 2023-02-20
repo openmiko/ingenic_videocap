@@ -39,3 +39,7 @@ _enable_audio:_
 - 0 disable audio
 - 1 enable audio
 
+_enable_logging:_
+- 0 disable logging
+- 1 enable logging
+
