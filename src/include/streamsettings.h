@@ -116,6 +116,7 @@ typedef struct {
 	uint32_t timestamp_24h;
 	uint32_t timestamp_location;
 	uint32_t enable_audio;
+	uint32_t enable_logging;
 
 
 } CameraConfig;
